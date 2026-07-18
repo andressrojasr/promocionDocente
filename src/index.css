@@ -1,0 +1,6 @@
+@import './styles/tailwind.css';
+@import './styles/theme.css';
+
+body {
+  margin: 0;
+}

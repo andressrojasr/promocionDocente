@@ -48,7 +48,18 @@ export default function PerfilDocente() {
       setLoading(false);
       return;
     }
-    fetchMyProfile()
+
+    const sessionJson = window.localStorage.getItem('uta-promo-session');
+    const session = sessionJson ? JSON.parse(sessionJson) : null;
+    const externalAccessToken = session?.externalAccessToken;
+
+    if (!externalAccessToken) {
+      toast.error('Token externo no disponible. Inicie sesión nuevamente.');
+      setLoading(false);
+      return;
+    }
+
+    fetchMyProfile(externalAccessToken)
       .then(setData)
       .catch((error: unknown) =>
         toast.error(error instanceof Error ? error.message : 'No se pudo cargar su hoja de vida.'))

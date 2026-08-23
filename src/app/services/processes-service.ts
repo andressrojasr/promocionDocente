@@ -25,6 +25,9 @@ export function createProcess(payload: CreateProcessPayload): Promise<ProcessDet
 }
 
 /** Dashboard de elegibilidad del docente autenticado frente a un proceso. */
-export function fetchEligibility(processId: string): Promise<Eligibility> {
-  return httpClient.get<Eligibility>(`/api/v1/processes/${processId}/eligibility`);
+export function fetchEligibility(processId: string, externalAccessToken: string): Promise<Eligibility> {
+  return httpClient.get<Eligibility>(
+    `/api/v1/processes/${processId}/eligibility`,
+    { 'X-External-Token': externalAccessToken }
+  );
 }

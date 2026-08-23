@@ -66,7 +66,7 @@ export default function Login() {
               <div className="w-12 h-12 bg-[#C9982E] rounded-lg flex items-center justify-center text-white font-bold text-xl">U</div>
               <div>
                 <CardTitle className="text-2xl">Iniciar Sesión</CardTitle>
-                <CardDescription>Sistema de Promociones UTA</CardDescription>
+                <CardDescription>Sistema de Promociones  UTA</CardDescription>
               </div>
             </div>
           </CardHeader>

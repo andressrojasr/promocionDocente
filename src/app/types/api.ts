@@ -113,6 +113,25 @@ export interface RequirementEvaluation {
   actual: string;
   met: boolean;
   detail: string;
+  requiredNumeric?: number | null;
+}
+
+export interface RequirementConfigForApplication {
+  minYearsInPosition: number;
+  minPublications: number;
+  minPublicationsInOtherLanguage: number;
+  minEvaluationScorePct: number;
+  minTrainingHours: number;
+  trainingWindowYears: number;
+  minPedagogicalTrainingPct: number | null;
+  minGivenTrainingHours: number | null;
+  minProjectMonths: number | null;
+  projectRoleScope: string;
+  applyRoleMultipliers: boolean;
+  minInternationalProjects: number | null;
+  minDoctoralTheses: number | null;
+  minDoctoralThesesInRank: number | null;
+  requiredLanguageLevel: string | null;
 }
 
 export interface Eligibility {
@@ -123,6 +142,7 @@ export interface Eligibility {
   isEligible: boolean;
   requirements: RequirementEvaluation[];
   notes: string | null;
+  requirementConfig?: RequirementConfigForApplication | null;
 }
 
 // ---------- Postulaciones ----------
@@ -164,6 +184,7 @@ export interface ApplicationSummary {
   status: ApplicationStatus;
   submittedAt: string;
   appealDeadline: string | null;
+  scorePct?: number | null;
 }
 
 export interface ApplicationItemDto {

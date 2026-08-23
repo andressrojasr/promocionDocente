@@ -7,9 +7,14 @@ import type {
 
 export function submitApplication(
   processId: string,
-  items: ApplicationItemPayload[]
+  items: ApplicationItemPayload[],
+  externalAccessToken: string
 ): Promise<ApplicationDetail> {
-  return httpClient.post<ApplicationDetail>('/api/v1/applications', { processId, items });
+  return httpClient.post<ApplicationDetail>(
+    '/api/v1/applications',
+    { processId, items },
+    { 'X-External-Token': externalAccessToken }
+  );
 }
 
 export function fetchApplications(status?: string, processId?: string): Promise<ApplicationSummary[]> {
@@ -21,7 +26,7 @@ export function fetchApplications(status?: string, processId?: string): Promise<
 }
 
 export function fetchApplicationDetail(applicationId: string): Promise<ApplicationDetail> {
-  return httpClient.get<ApplicationDetail>(`/api/v1/applications/${applicationId}`);
+  return httpClient.get<ApplicationDetail>(`/api/v1/applications/${applicationId}?includeEligibility=true`);
 }
 
 /** Registra la decisión de la etapa que corresponde al rol del usuario (TH, CP o CA). */

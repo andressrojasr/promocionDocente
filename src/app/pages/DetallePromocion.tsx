@@ -90,7 +90,16 @@ export default function DetallePromocion() {
 
         if (user?.backendRole === 'teacher') {
           try {
-            setEligibility(await fetchEligibility(id));
+            const sessionJson = window.localStorage.getItem('uta-promo-session');
+            const session = sessionJson ? JSON.parse(sessionJson) : null;
+            const externalAccessToken = session?.externalAccessToken;
+
+            if (!externalAccessToken) {
+              setEligibilityError('Token externo no disponible. Inicie sesión nuevamente.');
+              return;
+            }
+
+            setEligibility(await fetchEligibility(id, externalAccessToken));
           } catch (error) {
             setEligibilityError(
               error instanceof ApiError ? error.message : 'No se pudo evaluar su elegibilidad.');

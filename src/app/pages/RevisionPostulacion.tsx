@@ -48,6 +48,22 @@ export default function RevisionPostulacion() {
   const [appealDialogOpen, setAppealDialogOpen] = useState(false);
   const [justification, setJustification] = useState('');
   const [working, setWorking] = useState(false);
+  const [checkedRequirements, setCheckedRequirements] = useState<Set<string>>(new Set());
+
+  const allRequirementsChecked =
+    detail?.eligibility &&
+    detail.eligibility.requirements.length > 0 &&
+    detail.eligibility.requirements.every((req) => checkedRequirements.has(req.code));
+
+  const handleRequirementCheck = (code: string, checked: boolean) => {
+    const newChecked = new Set(checkedRequirements);
+    if (checked) {
+      newChecked.add(code);
+    } else {
+      newChecked.delete(code);
+    }
+    setCheckedRequirements(newChecked);
+  };
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -158,7 +174,11 @@ export default function RevisionPostulacion() {
                 <XCircle className="mr-2 h-4 w-4" />
                 Rechazar
               </Button>
-              <Button className="bg-green-700 hover:bg-green-800" onClick={() => setDecisionDialog('approved')}>
+              <Button
+                className="bg-green-700 hover:bg-green-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => setDecisionDialog('approved')}
+                disabled={!allRequirementsChecked}
+              >
                 <CheckCircle className="mr-2 h-4 w-4" />
                 Aprobar
               </Button>
@@ -183,10 +203,60 @@ export default function RevisionPostulacion() {
         </Alert>
       )}
 
-      <Tabs defaultValue="documentos">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* Panel Izquierdo - Requisitos */}
+        <div className="lg:col-span-1 sticky top-0 h-fit">
+          <h2 className="text-sm font-semibold mb-4 text-gray-900">Requisitos</h2>
+          {typeof detail.summary.scorePct === 'number' && (
+            <div className="mb-4 p-3 border rounded-lg bg-purple-50 border-purple-200">
+              <p className="text-xs text-gray-600">Score del docente</p>
+              <p className="text-lg font-bold text-purple-900">{detail.summary.scorePct.toFixed(2)}%</p>
+              {detail.eligibility?.requirementConfig?.minEvaluationScorePct && (
+                <p className="text-xs text-gray-600 mt-1">
+                  Requerido: {detail.eligibility.requirementConfig.minEvaluationScorePct}%
+                </p>
+              )}
+            </div>
+          )}
+          <div className="space-y-3">
+            {detail.eligibility ? (
+              <>
+                {detail.eligibility.requirements.map((req) => (
+                  <label
+                    key={req.code}
+                    className="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checkedRequirements.has(req.code)}
+                      onChange={(e) => handleRequirementCheck(req.code, e.target.checked)}
+                      className="mt-1 h-4 w-4 rounded border-gray-300"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-900">{req.label}</p>
+                      <p className="text-xs text-gray-600 mt-1">
+                        Requerido: {req.required}
+                      </p>
+                      {req.actual && (
+                        <p className="text-xs text-gray-500">
+                          Presentado: {req.actual}
+                        </p>
+                      )}
+                    </div>
+                  </label>
+                ))}
+              </>
+            ) : (
+              <p className="text-xs text-muted-foreground">No hay información de elegibilidad disponible.</p>
+            )}
+          </div>
+        </div>
+
+        {/* Panel Derecho - Documentos e Historial */}
+        <div className="lg:col-span-3">
+          <Tabs defaultValue="documentos">
         <TabsList>
           <TabsTrigger value="documentos">Documentación ({detail.items.length})</TabsTrigger>
-          <TabsTrigger value="requisitos">Requisitos al postular</TabsTrigger>
           <TabsTrigger value="historial">Historial de revisión ({detail.reviews.length})</TabsTrigger>
         </TabsList>
 
@@ -225,18 +295,6 @@ export default function RevisionPostulacion() {
             <Card>
               <CardContent className="py-8 text-center text-muted-foreground">
                 La postulación no tiene documentos adjuntos.
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        <TabsContent value="requisitos">
-          {detail.eligibility ? (
-            <EligibilityDashboard eligibility={detail.eligibility} />
-          ) : (
-            <Card>
-              <CardContent className="py-8 text-center text-muted-foreground">
-                No hay información de elegibilidad registrada.
               </CardContent>
             </Card>
           )}
@@ -290,7 +348,9 @@ export default function RevisionPostulacion() {
             </Card>
           )}
         </TabsContent>
-      </Tabs>
+          </Tabs>
+        </div>
+      </div>
 
       {/* Diálogo de decisión (TH / CP / CA) */}
       <Dialog open={decisionDialog !== null} onOpenChange={(open) => !open && setDecisionDialog(null)}>

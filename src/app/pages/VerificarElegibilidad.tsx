@@ -42,7 +42,18 @@ export default function VerificarElegibilidad() {
     try {
       setVerifying(true);
       setError(null);
-      setEligibility(await fetchEligibility(selectedProcessId));
+
+      const sessionJson = window.localStorage.getItem('uta-promo-session');
+      const session = sessionJson ? JSON.parse(sessionJson) : null;
+      const externalAccessToken = session?.externalAccessToken;
+
+      if (!externalAccessToken) {
+        setError('Token externo no disponible. Inicie sesión nuevamente.');
+        setEligibility(null);
+        return;
+      }
+
+      setEligibility(await fetchEligibility(selectedProcessId, externalAccessToken));
     } catch (err) {
       setEligibility(null);
       setError(err instanceof ApiError ? err.message : 'No se pudo evaluar su elegibilidad.');

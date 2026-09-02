@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { ArrowLeft, CheckCircle, XCircle, ExternalLink, Scale, Clock } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, ExternalLink, Scale, Clock, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -164,7 +164,7 @@ export default function RevisionPostulacion() {
         </div>
 
         <div className="flex gap-3">
-          {canReview && (
+          {canReview && (!detail.reviewLock?.lockedByName || detail.reviewLock.lockedByName === user?.nombre) && (
             <>
               <Button
                 variant="outline"
@@ -192,6 +192,7 @@ export default function RevisionPostulacion() {
           )}
         </div>
       </div>
+
 
       {isOwner && summary.status === 'cp_rejected' && summary.appealDeadline && (
         <Alert className="border-orange-300 bg-orange-50">
@@ -222,16 +223,18 @@ export default function RevisionPostulacion() {
             {detail.eligibility ? (
               <>
                 {detail.eligibility.requirements.map((req) => (
-                  <label
+                  <div
                     key={req.code}
-                    className="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+                    className="flex items-start gap-3 p-3 border rounded-lg"
                   >
-                    <input
-                      type="checkbox"
-                      checked={checkedRequirements.has(req.code)}
-                      onChange={(e) => handleRequirementCheck(req.code, e.target.checked)}
-                      className="mt-1 h-4 w-4 rounded border-gray-300"
-                    />
+                    {canReview && (
+                      <input
+                        type="checkbox"
+                        checked={checkedRequirements.has(req.code)}
+                        onChange={(e) => handleRequirementCheck(req.code, e.target.checked)}
+                        className="mt-1 h-4 w-4 rounded border-gray-300 text-[#00345E] focus:ring-[#00345E]"
+                      />
+                    )}
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-gray-900">{req.label}</p>
                       <p className="text-xs text-gray-600 mt-1">
@@ -243,7 +246,7 @@ export default function RevisionPostulacion() {
                         </p>
                       )}
                     </div>
-                  </label>
+                  </div>
                 ))}
               </>
             ) : (
@@ -272,9 +275,14 @@ export default function RevisionPostulacion() {
                     key={`${item.itemType}:${item.externalItemId}`}
                     className="flex items-center justify-between gap-3 rounded-lg border p-3"
                   >
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium">{item.title}</p>
                       <p className="text-xs text-muted-foreground">{item.externalItemId}</p>
+                      {item.documentDateOriginal && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Fecha de documento: <strong>{new Date(item.documentDateOriginal).toLocaleDateString('es-ES')}</strong>
+                        </p>
+                      )}
                     </div>
                     {item.documentUrl && (
                       <a

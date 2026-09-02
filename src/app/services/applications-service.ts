@@ -17,10 +17,11 @@ export function submitApplication(
   );
 }
 
-export function fetchApplications(status?: string, processId?: string): Promise<ApplicationSummary[]> {
+export function fetchApplications(status?: string, processId?: string, teacherId?: string): Promise<ApplicationSummary[]> {
   const params = new URLSearchParams();
   if (status) params.set('status', status);
   if (processId) params.set('processId', processId);
+  if (teacherId) params.set('teacherId', teacherId);
   const query = params.toString();
   return httpClient.get<ApplicationSummary[]>(`/api/v1/applications${query ? `?${query}` : ''}`);
 }

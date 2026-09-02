@@ -3,7 +3,7 @@ import type { ApplicationItemType, ApplicationStatus, BackendRole, ProcessStatus
 export function formatDate(value: string | null | undefined): string {
   if (!value) return '—';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('es-EC', { dateStyle: 'medium' });
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('es-EC', { dateStyle: 'medium', timeZone: 'America/Guayaquil' });
 }
 
 export function formatDateTime(value: string | null | undefined): string {
@@ -11,7 +11,7 @@ export function formatDateTime(value: string | null | undefined): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? value
-    : date.toLocaleString('es-EC', { dateStyle: 'medium', timeStyle: 'short' });
+    : date.toLocaleString('es-EC', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Guayaquil' });
 }
 
 export const APPLICATION_STATUS_LABELS: Record<ApplicationStatus, string> = {

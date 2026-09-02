@@ -26,6 +26,7 @@ interface SelectableItem {
   title: string;
   subtitle: string;
   documentUrl: string | null;
+  documentDate: string | null;
 }
 
 /** Mapea requisitos a tipos de items requeridos con mínimos. */
@@ -34,6 +35,26 @@ interface RequirementMap {
   label: string;
   requiredCount: number | null;
   requirementCode: string;
+}
+
+/** Calcula meses efectivos aplicando multiplicadores por rol de coordinador */
+function getEffectiveMonths(months: number, role: string, applyMultipliers: boolean = true): number {
+  if (!applyMultipliers) return months;
+
+  const normalizedRole = role?.toUpperCase() ?? '';
+
+  // Roles con multiplicador x2 (coordinador principal, director principal)
+  if (['COORDINATOR', 'COORDINADOR', 'DIRECTOR'].includes(normalizedRole)) {
+    return months * 2;
+  }
+
+  // Roles con multiplicador x1.5 (coordinador subrogante, codirector)
+  if (['SUBROGANT', 'CO_DIRECTOR', 'CODIRECTOR', 'SUBROGANTE'].includes(normalizedRole)) {
+    return months * 1.5;
+  }
+
+  // Sin multiplicador
+  return months;
 }
 
 function getRequiredItemTypes(eligibility: Eligibility): RequirementMap[] {
@@ -110,49 +131,56 @@ function buildSelectableItems(profile: TeacherProfileData): Record<ApplicationIt
       externalItemId: p.id,
       title: p.name,
       subtitle: `${p.journal} · ${formatDate(p.publicationDate)} · ${p.indexingDatabase} · ${p.language}`,
-      documentUrl: p.supportingDocumentUrl || null
+      documentUrl: p.supportingDocumentUrl || null,
+      documentDate: p.publicationDate
     })),
     received_training: hr.receivedTrainings.map((t) => ({
       itemType: 'received_training',
       externalItemId: t.id,
       title: t.name,
       subtitle: `${t.institution} · ${t.hours} horas · ${t.trainingCategory === 'PEDAGOGICAL' ? 'Pedagógica' : 'Disciplinar'}`,
-      documentUrl: t.supportingDocumentUrl || null
+      documentUrl: t.supportingDocumentUrl || null,
+      documentDate: t.startDate
     })),
     given_training: hr.givenTrainings.map((t) => ({
       itemType: 'given_training',
       externalItemId: t.id,
       title: t.name,
       subtitle: `${t.institution} · ${t.hours} horas`,
-      documentUrl: t.supportingDocumentUrl || null
+      documentUrl: t.supportingDocumentUrl || null,
+      documentDate: t.startDate
     })),
     research_project: hr.researchProjects.map((p) => ({
       itemType: 'research_project',
       externalItemId: p.id,
       title: p.name,
       subtitle: `${p.role} · ${formatDate(p.startDate)} — ${formatDate(p.endDate)} · ${p.months} meses`,
-      documentUrl: p.supportingDocumentUrl || null
+      documentUrl: p.supportingDocumentUrl || null,
+      documentDate: p.startDate
     })),
     doctoral_thesis: hr.doctoralTheses.map((t) => ({
       itemType: 'doctoral_thesis',
       externalItemId: t.id,
       title: t.title,
       subtitle: `${t.role} · Aprobada el ${formatDate(t.approvalDate)}`,
-      documentUrl: t.supportingDocumentUrl || null
+      documentUrl: t.supportingDocumentUrl || null,
+      documentDate: t.approvalDate
     })),
     language: hr.languages.map((l) => ({
       itemType: 'language',
       externalItemId: l.id,
       title: `${l.language} - Nivel ${l.level}`,
       subtitle: `${l.certifyingInstitution} · Vigente hasta ${formatDate(l.expirationDate)}`,
-      documentUrl: l.supportingDocumentUrl || null
+      documentUrl: l.supportingDocumentUrl || null,
+      documentDate: l.issueDate
     })),
     experience: hr.experience.map((e) => ({
       itemType: 'experience',
       externalItemId: e.id,
       title: `${e.position} - ${e.institution}`,
       subtitle: `${formatDate(e.startDate)} — ${e.endDate ? formatDate(e.endDate) : 'Actualidad'}`,
-      documentUrl: e.supportingDocumentUrl || null
+      documentUrl: e.supportingDocumentUrl || null,
+      documentDate: e.startDate
     }))
   };
 }
@@ -245,6 +273,7 @@ export default function FormularioPostulacion() {
   const [profile, setProfile] = useState<TeacherProfileData | null>(null);
   const [eligibility, setEligibility] = useState<Eligibility | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [itemDates, setItemDates] = useState<Record<string, string | null>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -280,9 +309,9 @@ export default function FormularioPostulacion() {
   const keyOf = (item: SelectableItem) => `${item.itemType}:${item.externalItemId}`;
 
   const toggleItem = (item: SelectableItem) => {
+    const key = keyOf(item);
     setSelected((current) => {
       const next = new Set(current);
-      const key = keyOf(item);
       if (next.has(key)) {
         next.delete(key);
       } else {
@@ -290,6 +319,14 @@ export default function FormularioPostulacion() {
       }
       return next;
     });
+
+    // Guardar la fecha del item cuando se selecciona
+    if (!itemDates[key] && item.documentDate) {
+      setItemDates((current) => ({
+        ...current,
+        [key]: item.documentDate
+      }));
+    }
   };
 
   const handleSubmit = async () => {
@@ -306,7 +343,11 @@ export default function FormularioPostulacion() {
 
     const items: ApplicationItemPayload[] = [...selected].map((key) => {
       const [itemType, externalItemId] = key.split(':');
-      return { itemType: itemType as ApplicationItemType, externalItemId };
+      return {
+        itemType: itemType as ApplicationItemType,
+        externalItemId,
+        documentDateOriginal: itemDates[key] || null
+      };
     });
 
     if (items.length === 0) {
@@ -427,16 +468,18 @@ export default function FormularioPostulacion() {
       return { selected: selectedHours, total: totalHours };
     }
 
-    // Para proyectos de investigación, sumar meses
+    // Para proyectos de investigación, sumar meses con multiplicadores por rol
     if (itemType === 'research_project' && profile) {
       const selectedMonths = selectedItems.reduce((sum, item) => {
         const project = profile.profile.researchProjects.find((p) => p.id === item.externalItemId);
-        return sum + (project?.months ?? 0);
+        if (!project) return sum;
+        return sum + getEffectiveMonths(project.months, project.role);
       }, 0);
 
       const totalMonths = validItems.reduce((sum, item) => {
         const project = profile.profile.researchProjects.find((p) => p.id === item.externalItemId);
-        return sum + (project?.months ?? 0);
+        if (!project) return sum;
+        return sum + getEffectiveMonths(project.months, project.role);
       }, 0);
 
       return { selected: selectedMonths, total: totalMonths };
@@ -593,6 +636,11 @@ export default function FormularioPostulacion() {
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium">{item.title}</p>
                           <p className="text-xs text-muted-foreground">{item.subtitle}</p>
+                          {item.documentDate && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              Fecha de documento: <strong>{formatDate(item.documentDate)}</strong>
+                            </p>
+                          )}
                         </div>
                         {item.documentUrl && (
                           <a

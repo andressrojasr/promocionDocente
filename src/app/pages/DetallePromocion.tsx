@@ -163,22 +163,6 @@ export default function DetallePromocion() {
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="flex items-center gap-3 pt-6">
-            <Users className="h-8 w-8 text-[#00345E]" />
-            <div>
-              <p className="text-sm text-muted-foreground">Postulaciones</p>
-              <p className="text-sm font-medium">{summary.applicationsCount}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Creado por</p>
-            <p className="text-sm font-medium">{summary.createdByName}</p>
-            <p className="text-xs text-muted-foreground">{formatDate(summary.createdAt)}</p>
-          </CardContent>
-        </Card>
       </div>
 
       {isTeacher && eligibility && <EligibilityDashboard eligibility={eligibility} />}

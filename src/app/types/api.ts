@@ -168,6 +168,7 @@ export type ApplicationItemType =
 export interface ApplicationItemPayload {
   itemType: ApplicationItemType;
   externalItemId: string;
+  documentDateOriginal?: string | null;
 }
 
 export interface ApplicationSummary {
@@ -192,6 +193,7 @@ export interface ApplicationItemDto {
   externalItemId: string;
   title: string;
   documentUrl: string | null;
+  documentDateOriginal: string | null;
 }
 
 export interface ReviewDto {

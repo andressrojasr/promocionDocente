@@ -7,6 +7,7 @@ import type { BackendRole } from '../types/api';
 export type UserRole =
   | 'admin'
   | 'comision_academica'
+  | 'comision_promocion'
   | 'docente'
   | 'talento_humano'
   | 'comision_apelaciones';

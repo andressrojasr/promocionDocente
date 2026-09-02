@@ -1,12 +1,15 @@
 import { createBrowserRouter, Navigate } from 'react-router';
 import { useAuth } from './context/AuthContext';
+import { useSelectedProcess } from './context/ProcessContext';
 import { navItems } from './config/navigation';
 import { RequireAuth, RequireRole } from './routes/RouteGuards';
 import { AppLayout } from './components/AppLayout';
 import Login from './pages/Login';
+import ProcessSelection from './pages/ProcessSelection';
 import DashboardAdmin from './pages/DashboardAdmin';
 import DashboardComisionAcademica from './pages/DashboardComisionAcademica';
 import DashboardDocente from './pages/DashboardDocente';
+import DashboardCPIntegrated from './pages/DashboardCPIntegrated';
 import GestionUsuarios from './pages/GestionUsuarios';
 import ListaPromociones from './pages/ListaPromociones';
 import DetallePromocion from './pages/DetallePromocion';
@@ -22,9 +25,25 @@ const rolesFor = (path: string) => navItems.find((item) => item.path === path)!.
 
 function DashboardRouter() {
   const { user } = useAuth();
+  const { selectedProcess } = useSelectedProcess();
 
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Los docentes y TH van a promociones primero para seleccionar el proceso
+  if (user.rol === 'docente' || user.rol === 'talento_humano') {
+    return <Navigate to="/promociones" replace />;
+  }
+
+  // CP y CA sin proceso seleccionado van a promociones
+  if ((user.rol === 'comision_promocion' || user.rol === 'comision_apelaciones') && !selectedProcess) {
+    return <Navigate to="/promociones" replace />;
+  }
+
+  // Si no hay proceso seleccionado y necesita uno, redirige a selección
+  if (!selectedProcess && user.rol !== 'admin') {
+    return <Navigate to="/process-selection" replace />;
   }
 
   switch (user.rol) {
@@ -32,10 +51,8 @@ function DashboardRouter() {
       return <DashboardAdmin />;
     case 'comision_academica':
       return <DashboardComisionAcademica />;
-    case 'docente':
-      return <DashboardDocente />;
-    case 'talento_humano':
-      return <DashboardComisionAcademica />;
+    case 'comision_promocion':
+      return <DashboardCPIntegrated />;
     case 'comision_apelaciones':
       return <DashboardComisionAcademica />;
     default:
@@ -59,6 +76,10 @@ export const router = createBrowserRouter([
       {
         index: true,
         element: <Navigate to="/dashboard" replace />
+      },
+      {
+        path: 'process-selection',
+        element: <ProcessSelection />
       },
       {
         path: 'dashboard',

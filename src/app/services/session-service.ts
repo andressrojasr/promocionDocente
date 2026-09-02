@@ -17,7 +17,7 @@ export function fetchMe(): Promise<SessionUser> {
 /** Mapeo entre los roles del backend y los roles internos del frontend. */
 const BACKEND_ROLE_MAP: Record<BackendRole, UserRole> = {
   admin: 'admin',
-  cp: 'comision_academica',
+  cp: 'comision_promocion',
   th: 'talento_humano',
   ca: 'comision_apelaciones',
   teacher: 'docente'

@@ -1,24 +1,60 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Plus, CalendarDays, Users } from 'lucide-react';
+import { Plus, CalendarDays, Users, BarChart3 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { ProcessStatusBadge } from '../components/ApplicationStatusBadge';
 import { useAuth } from '../context/AuthContext';
+import { useSelectedProcess } from '../context/ProcessContext';
 import { fetchProcesses } from '../services/processes-service';
+import { fetchApplications } from '../services/applications-service';
 import { formatDate } from '../utils/format';
-import type { ProcessSummary } from '../types/api';
+import type { ProcessSummary, ApplicationSummary } from '../types/api';
 
 export default function ListaPromociones() {
   const { user } = useAuth();
+  const { setSelectedProcess } = useSelectedProcess();
   const navigate = useNavigate();
   const [processes, setProcesses] = useState<ProcessSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
   const isCp = user?.backendRole === 'cp';
   const isTeacher = user?.backendRole === 'teacher';
+  const isTH = user?.backendRole === 'th';
+  const isCa = user?.backendRole === 'ca';
+
+  const handleProcessClick = async (process: ProcessSummary) => {
+    setSelectedProcess(process);
+    if (isTH) {
+      navigate('/postulaciones');
+    } else if (isCp) {
+      navigate('/dashboard');
+    } else if (isCa) {
+      navigate('/apelaciones');
+    } else if (isTeacher) {
+      // Si docente ya postuló, ir a su postulación; si no, ir a requisitos del proceso
+      if (process.hasApplied) {
+        try {
+          const applications = await fetchApplications(undefined, process.id);
+          const myApplication = applications.find(app => app.teacherUserId === user?.userId);
+          if (myApplication) {
+            navigate(`/postulaciones/${myApplication.id}`);
+          } else {
+            navigate(`/promociones/${process.id}`);
+          }
+        } catch (error) {
+          console.error('Error fetching applications:', error);
+          navigate(`/promociones/${process.id}`);
+        }
+      } else {
+        navigate(`/promociones/${process.id}`);
+      }
+    } else {
+      navigate(`/promociones/${process.id}`);
+    }
+  };
 
   useEffect(() => {
     fetchProcesses()
@@ -62,7 +98,7 @@ export default function ListaPromociones() {
             <Card
               key={process.id}
               className="cursor-pointer transition-shadow hover:shadow-md"
-              onClick={() => navigate(`/promociones/${process.id}`)}
+              onClick={() => void handleProcessClick(process)}
             >
               <CardHeader>
                 <div className="flex items-start justify-between gap-2">
@@ -93,6 +129,21 @@ export default function ListaPromociones() {
                 )}
                 {isTeacher && process.hasApplied && (
                   <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Ya postuló</Badge>
+                )}
+                {isCp && (
+                  <div className="pt-4">
+                    <Button
+                      className="w-full bg-[#00345E] hover:bg-[#002c4d]"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedProcess(process);
+                        navigate('/dashboard');
+                      }}
+                    >
+                      <BarChart3 className="mr-2 h-4 w-4" />
+                      Dashboard
+                    </Button>
+                  </div>
                 )}
               </CardContent>
             </Card>

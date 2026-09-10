@@ -1,7 +1,42 @@
-// URL base del servicio de autenticación de la UTA (backend simulado).
-// El login es la única llamada que va directo a la simulación; el resto de
+// URL base del servicio de autenticación de la UTA.
+// Se descubre dinámicamente desde PromocionBackend (/api/v1/auth/config).
+// El login es la única llamada que va directo a este servicio; el resto de
 // operaciones pasa por el backend de promoción (ver http-client.ts).
-const AUTH_API_URL = import.meta.env.VITE_AUTH_API_URL ?? 'http://localhost:5031';
+const PROMO_API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:5080';
+
+let cachedAuthConfig: { authApiUrl: string; loginEndpoint: string } | null = null;
+
+async function getAuthConfig(): Promise<{ authApiUrl: string; loginEndpoint: string }> {
+  if (cachedAuthConfig) return cachedAuthConfig;
+
+  try {
+    const configRes = await fetch(`${PROMO_API_URL}/api/v1/auth/config`);
+
+    let authApiUrl = 'http://localhost:5031';
+    let loginEndpoint = 'api/v1/auth/login';
+
+    if (configRes.ok) {
+      const configData = (await configRes.json()) as { data?: { authApiUrl?: string } };
+      if (configData.data?.authApiUrl) {
+        authApiUrl = configData.data.authApiUrl;
+        // Si es el servicio real de UTA, ajusta el endpoint
+        if (authApiUrl.includes('WsSeguUta')) {
+          loginEndpoint = 'api/auth/login';
+        }
+      }
+    }
+
+    cachedAuthConfig = { authApiUrl, loginEndpoint };
+    return cachedAuthConfig;
+  } catch (e) {
+    console.warn('No se pudo obtener la configuración de autenticación', e);
+    cachedAuthConfig = {
+      authApiUrl: import.meta.env.VITE_AUTH_API_URL ?? 'http://localhost:5031',
+      loginEndpoint: 'api/v1/auth/login'
+    };
+    return cachedAuthConfig;
+  }
+}
 
 export interface LoginTokens {
   accessToken: string;
@@ -59,10 +94,11 @@ export function decodeJwt(token: string): JwtClaims {
  * Lanza un Error con el mensaje del servicio si las credenciales son inválidas.
  */
 export async function loginRequest(email: string, password: string): Promise<LoginTokens> {
+  const { authApiUrl, loginEndpoint } = await getAuthConfig();
   let response: Response;
 
   try {
-    response = await fetch(`${AUTH_API_URL}/api/v1/auth/login`, {
+    response = await fetch(`${authApiUrl}/${loginEndpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

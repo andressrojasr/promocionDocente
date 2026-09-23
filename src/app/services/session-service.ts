@@ -26,3 +26,27 @@ const BACKEND_ROLE_MAP: Record<BackendRole, UserRole> = {
 export function mapBackendRole(role: BackendRole): UserRole {
   return BACKEND_ROLE_MAP[role] ?? 'docente';
 }
+
+interface StoredSession {
+  appToken: string;
+  externalAccessToken: string;
+}
+
+const SESSION_STORAGE_KEY = 'uta-promo-session';
+
+/** Lee la sesión guardada en localStorage (mismo formato que usa AuthContext). */
+export function getStoredSession(): StoredSession | null {
+  const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw) as StoredSession;
+  } catch {
+    return null;
+  }
+}
+
+/** Token del servicio de la UTA, necesario para las llamadas que consultan RRHH (facultades, docentes). */
+export function getExternalAccessToken(): string | null {
+  return getStoredSession()?.externalAccessToken ?? null;
+}

@@ -102,6 +102,86 @@ export interface CreateProcessPayload {
   startDate: string;
   endDate: string;
   requirements: RequirementConfig[];
+  /** Comisión principal de promoción (6 integrantes) que se crea junto con el proceso. */
+  commissionMembers: CommissionMemberInput[];
+}
+
+// ---------- Facultades ----------
+
+export interface Faculty {
+  id: string;
+  name: string;
+}
+
+// ---------- Directorio de docentes/autoridades ----------
+
+export interface TeacherSummary {
+  teacherId: string;
+  identification: string;
+  fullName: string;
+  facultyId: string | null;
+  facultyName: string | null;
+}
+
+// ---------- Comisiones ----------
+
+export type CommissionType = 'cp' | 'ca';
+
+export interface CommissionMemberInput {
+  cargoLabel: string;
+  teacherIdentification: string;
+  teacherFullName: string;
+  teacherExternalId?: string | null;
+}
+
+export interface CommissionMember extends CommissionMemberInput {
+  orderIndex: number;
+}
+
+export interface Commission {
+  id: string;
+  processId: string;
+  type: CommissionType;
+  isPrincipal: boolean;
+  date: string;
+  createdAt: string;
+  createdByName: string;
+  members: CommissionMember[];
+}
+
+export interface CreateCommissionPayload {
+  processId: string;
+  type: CommissionType;
+  isPrincipal: boolean;
+  date: string;
+  members: CommissionMemberInput[];
+}
+
+// ---------- Sesiones de revisión ----------
+
+export interface ReviewSession {
+  id: string;
+  processId: string;
+  processName: string;
+  type: CommissionType;
+  commissionId: string;
+  commissionDate: string;
+  commissionIsPrincipal: boolean;
+  facultyId: string;
+  facultyName: string;
+  createdByUserId: string;
+  createdByName: string;
+  createdAt: string;
+  /** Cuándo se cerró la sesión; null mientras sigue activa/reanudable. */
+  closedAt: string | null;
+}
+
+export interface CreateReviewSessionPayload {
+  processId: string;
+  type: CommissionType;
+  commissionId: string;
+  facultyId: string;
+  facultyName: string;
 }
 
 // ---------- Elegibilidad ----------
@@ -186,6 +266,10 @@ export interface ApplicationSummary {
   submittedAt: string;
   appealDeadline: string | null;
   scorePct?: number | null;
+  facultyId: string | null;
+  facultyName: string | null;
+  /** Sesión de revisión (proceso+comisión+facultad) de la decisión CP/CA más reciente, si existe. */
+  reviewSessionId: string | null;
 }
 
 export interface ApplicationItemDto {

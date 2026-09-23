@@ -20,6 +20,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { ApplicationStatusBadge } from '../components/ApplicationStatusBadge';
 import { EligibilityDashboard } from '../components/EligibilityDashboard';
 import { useAuth } from '../context/AuthContext';
+import { useReviewSession } from '../context/ReviewSessionContext';
 import {
   appealApplication,
   fetchApplicationDetail,
@@ -27,7 +28,7 @@ import {
 } from '../services/applications-service';
 import { ApiError } from '../services/http-client';
 import { ITEM_TYPE_LABELS, REVIEW_STAGE_LABELS, formatDateTime } from '../utils/format';
-import type { ApplicationDetail, ApplicationItemType, ApplicationStatus } from '../types/api';
+import type { ApplicationDetail, ApplicationItemType, ApplicationStatus, CommissionType } from '../types/api';
 
 /** Estado que puede revisar cada rol (espejo de la máquina de estados del backend). */
 const REVIEWABLE_STATUS: Partial<Record<string, ApplicationStatus>> = {
@@ -49,6 +50,11 @@ export default function RevisionPostulacion() {
   const [justification, setJustification] = useState('');
   const [working, setWorking] = useState(false);
   const [checkedRequirements, setCheckedRequirements] = useState<Set<string>>(new Set());
+  const { activeSession } = useReviewSession();
+
+  /** CP y CA deben tener una sesión de revisión activa para decidir; TH no la necesita. */
+  const commissionType: CommissionType | null =
+    user?.backendRole === 'cp' ? 'cp' : user?.backendRole === 'ca' ? 'ca' : null;
 
   const allRequirementsChecked =
     detail?.eligibility &&
@@ -90,6 +96,10 @@ export default function RevisionPostulacion() {
   const isOwner = user.backendRole === 'teacher' && summary.teacherUserId === user.userId;
   const canReview = REVIEWABLE_STATUS[user.backendRole] === summary.status;
 
+  /** Sin sesión de revisión activa para la facultad de esta postulación, CP/CA no puede decidir. */
+  const sessionMismatch =
+    commissionType !== null && (!activeSession || activeSession.facultyId !== summary.facultyId);
+
   const itemsByType = detail.items.reduce<Map<ApplicationItemType, typeof detail.items>>((map, item) => {
     const list = map.get(item.itemType) ?? [];
     list.push(item);
@@ -105,9 +115,18 @@ export default function RevisionPostulacion() {
       return;
     }
 
+    if (sessionMismatch) {
+      toast.error('Debe iniciar una sesión de revisión para la facultad de esta postulación antes de decidir.');
+      return;
+    }
+
     try {
       setWorking(true);
-      const updated = await reviewApplication(id, decisionDialog, feedback.trim() || undefined);
+      const updated = await reviewApplication(
+        id,
+        decisionDialog,
+        feedback.trim() || undefined,
+        commissionType ? activeSession?.id : undefined);
       setDetail(updated);
       setDecisionDialog(null);
       setFeedback('');
@@ -164,7 +183,7 @@ export default function RevisionPostulacion() {
         </div>
 
         <div className="flex gap-3">
-          {canReview && (!detail.reviewLock?.lockedByName || detail.reviewLock.lockedByName === user?.nombre) && (
+          {canReview && !sessionMismatch && (!detail.reviewLock?.lockedByName || detail.reviewLock.lockedByName === user?.nombre) && (
             <>
               <Button
                 variant="outline"
@@ -193,6 +212,24 @@ export default function RevisionPostulacion() {
         </div>
       </div>
 
+      {canReview && sessionMismatch && (
+        <Alert className="border-amber-300 bg-amber-50">
+          <AlertDescription className="flex flex-wrap items-center justify-between gap-3 text-amber-900">
+            <span>
+              {activeSession
+                ? `Su sesión de revisión activa es para la facultad "${activeSession.facultyName}"; esta postulación pertenece a otra facultad.`
+                : 'Debe iniciar una sesión de revisión (proceso, comisión y facultad) antes de decidir.'}
+            </span>
+            <Button
+              size="sm"
+              className="bg-[#00345E]"
+              onClick={() => navigate('/sesiones')}
+            >
+              {activeSession ? 'Cambiar sesión' : 'Iniciar sesión'}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {isOwner && summary.status === 'cp_rejected' && summary.appealDeadline && (
         <Alert className="border-orange-300 bg-orange-50">
@@ -373,6 +410,16 @@ export default function RevisionPostulacion() {
                 : 'Ingrese la retroalimentación para el docente. Se registrará su usuario y la fecha de la decisión.'}
             </DialogDescription>
           </DialogHeader>
+          {commissionType && activeSession && (
+            <div className="rounded-lg border bg-secondary p-3 text-sm">
+              <p className="text-muted-foreground">Comisión que decide (de su sesión de revisión activa)</p>
+              <p className="font-medium">
+                {activeSession.commissionIsPrincipal ? 'Principal' : `Sesión del ${new Date(activeSession.commissionDate).toLocaleDateString('es-EC')}`}
+                {' · '}
+                {activeSession.facultyName}
+              </p>
+            </div>
+          )}
           <div className="space-y-2">
             <Label>
               Retroalimentación {decisionDialog === 'approved' ? '(opcional)' : '(obligatoria)'}
@@ -390,7 +437,7 @@ export default function RevisionPostulacion() {
             </Button>
             <Button
               onClick={() => void handleDecision()}
-              disabled={working}
+              disabled={working || sessionMismatch}
               className={decisionDialog === 'approved' ? 'bg-green-700 hover:bg-green-800' : 'bg-red-600 hover:bg-red-700'}
             >
               {working ? 'Guardando...' : decisionDialog === 'approved' ? 'Confirmar aprobación' : 'Confirmar rechazo'}

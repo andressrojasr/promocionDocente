@@ -4,12 +4,16 @@ import type { CpDashboardData } from '../types/dashboard';
 export function fetchCpDashboardData(
   status?: string,
   processId?: string,
-  teacherId?: string
+  teacherId?: string,
+  facultyId?: string,
+  decisionDate?: string
 ): Promise<CpDashboardData> {
   const params = new URLSearchParams();
   if (status) params.set('status', status);
   if (processId) params.set('processId', processId);
   if (teacherId) params.set('teacherId', teacherId);
+  if (facultyId) params.set('facultyId', facultyId);
+  if (decisionDate) params.set('decisionDate', decisionDate);
   const query = params.toString();
   return httpClient.get<CpDashboardData>(`/api/v1/dashboard/cp/data${query ? `?${query}` : ''}`);
 }

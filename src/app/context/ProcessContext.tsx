@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { useReviewSession } from './ReviewSessionContext';
 import type { ProcessSummary } from '../types/api';
 
 interface ProcessContextValue {
@@ -23,14 +24,22 @@ function readStoredProcess(): ProcessSummary | null {
 }
 
 export function ProcessProvider({ children }: { children: ReactNode }) {
+  const { clearActiveSession } = useReviewSession();
   const [selectedProcess, setSelectedProcessState] = useState<ProcessSummary | null>(() =>
     readStoredProcess()
   );
 
   const setSelectedProcess = useCallback((process: ProcessSummary) => {
     window.sessionStorage.setItem(PROCESS_STORAGE_KEY, JSON.stringify(process));
-    setSelectedProcessState(process);
-  }, []);
+    setSelectedProcessState((prev) => {
+      // Una sesión de revisión activa pertenece a un proceso puntual: si se cambia de
+      // proceso, esa sesión deja de ser válida y no debe seguir arrastrándose.
+      if (prev && prev.id !== process.id) {
+        clearActiveSession();
+      }
+      return process;
+    });
+  }, [clearActiveSession]);
 
   const clearSelectedProcess = useCallback(() => {
     window.sessionStorage.removeItem(PROCESS_STORAGE_KEY);

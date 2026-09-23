@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Home, Users, FileText, CheckSquare, MessageSquare, TrendingUp } from 'lucide-react';
+import { Home, Users, FileText, CheckSquare, MessageSquare, TrendingUp, Gavel, History } from 'lucide-react';
 import type { UserRole } from '../context/AuthContext';
 
 export interface NavItem {
@@ -38,6 +38,18 @@ export const navItems: NavItem[] = [
     icon: <MessageSquare className="w-5 h-5" />,
     path: '/apelaciones',
     roles: ['docente', 'comision_apelaciones']
+  },
+  {
+    label: 'Comisiones',
+    icon: <Gavel className="w-5 h-5" />,
+    path: '/comisiones',
+    roles: ['comision_promocion', 'comision_apelaciones']
+  },
+  {
+    label: 'Sesiones',
+    icon: <History className="w-5 h-5" />,
+    path: '/sesiones',
+    roles: ['comision_promocion', 'comision_apelaciones']
   }
 ];
 

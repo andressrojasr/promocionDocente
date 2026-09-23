@@ -5,7 +5,6 @@ import { navItems } from './config/navigation';
 import { RequireAuth, RequireRole } from './routes/RouteGuards';
 import { AppLayout } from './components/AppLayout';
 import Login from './pages/Login';
-import ProcessSelection from './pages/ProcessSelection';
 import DashboardAdmin from './pages/DashboardAdmin';
 import DashboardComisionAcademica from './pages/DashboardComisionAcademica';
 import DashboardDocente from './pages/DashboardDocente';
@@ -18,6 +17,8 @@ import RevisionPostulacion from './pages/RevisionPostulacion';
 import CrearPromocion from './pages/CrearPromocion';
 import ListaPostulaciones from './pages/ListaPostulaciones';
 import GestionApelaciones from './pages/GestionApelaciones';
+import GestionComisiones from './pages/GestionComisiones';
+import Sesiones from './pages/Sesiones';
 import VerificarElegibilidad from './pages/VerificarElegibilidad';
 import PerfilDocente from './pages/PerfilDocente';
 
@@ -41,9 +42,9 @@ function DashboardRouter() {
     return <Navigate to="/promociones" replace />;
   }
 
-  // Si no hay proceso seleccionado y necesita uno, redirige a selección
+  // Si no hay proceso seleccionado y necesita uno, redirige a Promociones para elegirlo
   if (!selectedProcess && user.rol !== 'admin') {
-    return <Navigate to="/process-selection" replace />;
+    return <Navigate to="/promociones" replace />;
   }
 
   switch (user.rol) {
@@ -76,10 +77,6 @@ export const router = createBrowserRouter([
       {
         index: true,
         element: <Navigate to="/dashboard" replace />
-      },
-      {
-        path: 'process-selection',
-        element: <ProcessSelection />
       },
       {
         path: 'dashboard',
@@ -147,6 +144,22 @@ export const router = createBrowserRouter([
         element: (
           <RequireRole roles={rolesFor('/apelaciones')}>
             <GestionApelaciones />
+          </RequireRole>
+        )
+      },
+      {
+        path: 'comisiones',
+        element: (
+          <RequireRole roles={rolesFor('/comisiones')}>
+            <GestionComisiones />
+          </RequireRole>
+        )
+      },
+      {
+        path: 'sesiones',
+        element: (
+          <RequireRole roles={rolesFor('/sesiones')}>
+            <Sesiones />
           </RequireRole>
         )
       },

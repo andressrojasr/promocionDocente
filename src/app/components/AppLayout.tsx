@@ -1,9 +1,13 @@
 import { useCallback, useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router';
 import { LogOut } from 'lucide-react';
+import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
+import { useSelectedProcess } from '../context/ProcessContext';
+import { useReviewSession } from '../context/ReviewSessionContext';
 import { navItems } from '../config/navigation';
 import { NotificationsBell } from './NotificationsBell';
+import { Button } from './ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,7 +18,9 @@ import {
 } from './ui/dropdown-menu';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { cn } from './ui/utils';
+import { closeReviewSession } from '../services/review-sessions-service';
 import type { AuthUser } from '../context/AuthContext';
+import type { ProcessSummary, ReviewSession } from '../types/api';
 
 const SIDEBAR_CLOSE_DELAY_MS = 200;
 // El sidebar permanece colapsado por defecto y se expande temporalmente al pasar el mouse.
@@ -100,16 +106,69 @@ interface TopBarProps {
   user: AuthUser | null;
   onNavigate: (path: string) => void;
   onLogout: () => void;
+  selectedProcess: ProcessSummary | null;
+  activeSession: ReviewSession | null;
+  onChangeProcess: () => void;
+  onChangeSession: () => void;
+  onCloseSession: () => void;
+  closingSession: boolean;
 }
 
-function TopBar({ user, onNavigate, onLogout }: TopBarProps) {
+function TopBar({
+  user,
+  onNavigate,
+  onLogout,
+  selectedProcess,
+  activeSession,
+  onChangeProcess,
+  onChangeSession,
+  onCloseSession,
+  closingSession
+}: TopBarProps) {
+  const showWorkContext = user?.rol === 'comision_promocion' || user?.rol === 'comision_apelaciones';
+
   return (
     <header className="bg-white border-b border-border px-6 py-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-xl">Universidad Técnica de Ambato</h2>
           <p className="text-sm text-muted-foreground">Promoción Docente</p>
         </div>
+
+        {showWorkContext && (
+          <div className="flex items-center gap-2 flex-wrap min-w-0">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-sm min-w-0 max-w-full">
+              <span className="text-gray-600 truncate">
+                Proceso:{' '}
+                <span className="font-semibold text-blue-900">
+                  {selectedProcess ? selectedProcess.name : 'Sin proceso seleccionado'}
+                </span>
+              </span>
+              <Button variant="ghost" size="sm" className="h-6 px-2 flex-shrink-0" onClick={onChangeProcess}>
+                Cambiar
+              </Button>
+            </div>
+            {activeSession && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 border border-green-200 rounded-lg text-sm min-w-0 max-w-full">
+                <span className="text-gray-600 truncate">
+                  Sesión: <span className="font-semibold text-green-900">{activeSession.facultyName}</span>
+                </span>
+                <Button variant="ghost" size="sm" className="h-6 px-2 flex-shrink-0" onClick={onChangeSession}>
+                  Cambiar
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 flex-shrink-0 text-red-600 hover:text-red-700"
+                  disabled={closingSession}
+                  onClick={onCloseSession}
+                >
+                  {closingSession ? 'Cerrando...' : 'Cerrar'}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="flex items-center gap-4">
           <NotificationsBell />
@@ -146,7 +205,10 @@ export function AppLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { selectedProcess } = useSelectedProcess();
+  const { activeSession, clearActiveSession } = useReviewSession();
   const [sidebarHoverOpen, setSidebarHoverOpen] = useState(false);
+  const [closingSession, setClosingSession] = useState(false);
   const hoverTimeoutRef = useRef<number | undefined>(undefined);
 
   const visibleNavItems = navItems.filter((item) => user && item.roles.includes(user.rol));
@@ -166,6 +228,28 @@ export function AppLayout() {
     navigate('/login');
   }, [logout, navigate]);
 
+  const handleChangeProcess = useCallback(() => {
+    navigate('/promociones');
+  }, [navigate]);
+
+  const handleChangeSession = useCallback(() => {
+    navigate('/sesiones');
+  }, [navigate]);
+
+  const handleCloseSession = useCallback(async () => {
+    if (!activeSession) return;
+    try {
+      setClosingSession(true);
+      await closeReviewSession(activeSession.id);
+      clearActiveSession();
+      toast.success('Sesión cerrada. Ya no podrá usarse para decidir postulaciones.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo cerrar la sesión.');
+    } finally {
+      setClosingSession(false);
+    }
+  }, [activeSession, clearActiveSession]);
+
   return (
     <div className="flex h-screen bg-background">
       <Sidebar
@@ -178,7 +262,17 @@ export function AppLayout() {
       />
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <TopBar user={user} onNavigate={navigate} onLogout={handleLogout} />
+        <TopBar
+          user={user}
+          onNavigate={navigate}
+          onLogout={handleLogout}
+          selectedProcess={selectedProcess}
+          activeSession={activeSession}
+          onChangeProcess={handleChangeProcess}
+          onChangeSession={handleChangeSession}
+          onCloseSession={() => void handleCloseSession()}
+          closingSession={closingSession}
+        />
 
         <main className="flex-1 overflow-auto p-6 bg-[#F5F5F5]">
           <Outlet />

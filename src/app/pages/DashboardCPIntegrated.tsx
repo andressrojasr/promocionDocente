@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router';
-import { FileText, Clock, CheckCircle, XCircle, TrendingUp, Download } from 'lucide-react';
+import { FileText, Clock, CheckCircle, XCircle, TrendingUp, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -10,12 +10,13 @@ import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { ApplicationStatusBadge } from '../components/ApplicationStatusBadge';
 import { useSelectedProcess } from '../context/ProcessContext';
+import { useReviewSession } from '../context/ReviewSessionContext';
 import { useApplicationUpdates } from '../hooks/useApplicationUpdates';
-import { fetchCpDashboardData, exportCpDashboardToCSV } from '../services/dashboard-cp-service';
-import { fetchProcesses } from '../services/processes-service';
+import { fetchCpDashboardData } from '../services/dashboard-cp-service';
+import { fetchFaculties } from '../services/faculties-service';
 import { formatDateTime } from '../utils/format';
-import type { CpDashboardData, ProcessSummary } from '../types/dashboard';
-import type { ApplicationSummary } from '../types/api';
+import type { CpDashboardData } from '../types/dashboard';
+import type { ApplicationSummary, Faculty } from '../types/api';
 
 const STATUS_LABELS: Record<string, string> = {
   'submitted': 'Enviados',
@@ -30,30 +31,65 @@ const STATUS_LABELS: Record<string, string> = {
 export default function DashboardCPIntegrated() {
   const navigate = useNavigate();
   const { selectedProcess } = useSelectedProcess();
+  const { activeSession } = useReviewSession();
   const { subscribe } = useApplicationUpdates();
   const [data, setData] = useState<CpDashboardData | null>(null);
-  const [processes, setProcesses] = useState<ProcessSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<string>('__all__');
-  const [filterProcess, setFilterProcess] = useState<string>(selectedProcess?.id || '__all__');
   const [searchCedula, setSearchCedula] = useState('');
   const [debouncedSearchCedula, setDebouncedSearchCedula] = useState('');
+  const [faculties, setFaculties] = useState<Faculty[]>([]);
+  const [filterFaculty, setFilterFaculty] = useState<string>('__all__');
+  const [filterDecisionDate, setFilterDecisionDate] = useState<string>('');
 
-  // Cargar procesos al montar
+  const processId = selectedProcess?.id;
+  const hasUsableSession = !!activeSession && activeSession.processId === processId;
+
+  const [pendingByFaculty, setPendingByFaculty] = useState<{ facultyId: string; facultyName: string; count: number }[]>([]);
+
   useEffect(() => {
-    fetchProcesses()
-      .then(setProcesses)
+    fetchFaculties()
+      .then(setFaculties)
       .catch((error: unknown) =>
-        toast.error(error instanceof Error ? error.message : 'No se pudieron cargar los procesos.')
-      );
+        toast.error(error instanceof Error ? error.message : 'No se pudieron cargar las facultades.'));
   }, []);
 
-  // Actualizar filtro cuando cambia el proceso seleccionado
+  // Si hay una sesión de revisión activa, las cifras del panel se enfocan en su facultad
+  // (la misma que verá al ir a Postulaciones); si se cierra la sesión, vuelve a "todas".
   useEffect(() => {
-    if (selectedProcess) {
-      setFilterProcess(selectedProcess.id);
+    if (activeSession && activeSession.processId === processId) {
+      setFilterFaculty(activeSession.facultyId);
+    } else {
+      setFilterFaculty('__all__');
     }
-  }, [selectedProcess]);
+  }, [activeSession?.id, activeSession?.processId, processId]);
+
+  // Sin sesión activa: desglose de pendientes por facultad, para saber para cuál iniciar sesión.
+  useEffect(() => {
+    if (!processId || hasUsableSession) {
+      setPendingByFaculty([]);
+      return;
+    }
+    fetchCpDashboardData('th_approved', processId)
+      .then((res) => {
+        const byFaculty = new Map<string, { facultyId: string; facultyName: string; count: number }>();
+        res.applications.forEach((app) => {
+          const key = app.facultyId ?? '__none__';
+          const existing = byFaculty.get(key);
+          if (existing) {
+            existing.count += 1;
+          } else {
+            byFaculty.set(key, {
+              facultyId: app.facultyId ?? '',
+              facultyName: app.facultyName ?? 'Sin facultad',
+              count: 1
+            });
+          }
+        });
+        setPendingByFaculty([...byFaculty.values()].sort((a, b) => b.count - a.count));
+      })
+      .catch(() => setPendingByFaculty([]));
+  }, [processId, hasUsableSession]);
 
   // Debounce la búsqueda por cédula (500ms)
   useEffect(() => {
@@ -66,18 +102,21 @@ export default function DashboardCPIntegrated() {
 
   // Recargar datos cuando cambian los filtros
   useEffect(() => {
+    if (!processId) return;
     setLoading(true);
     fetchCpDashboardData(
       filterStatus !== '__all__' ? filterStatus : undefined,
-      filterProcess !== '__all__' ? filterProcess : undefined,
-      debouncedSearchCedula || undefined
+      processId,
+      debouncedSearchCedula || undefined,
+      filterFaculty !== '__all__' ? filterFaculty : undefined,
+      filterDecisionDate || undefined
     )
       .then(setData)
       .catch((error: unknown) =>
         toast.error(error instanceof Error ? error.message : 'No se pudo cargar el dashboard.')
       )
       .finally(() => setLoading(false));
-  }, [filterStatus, filterProcess, debouncedSearchCedula]);
+  }, [filterStatus, processId, debouncedSearchCedula, filterFaculty, filterDecisionDate]);
 
   // Handler para actualizaciones en tiempo real
   const handleApplicationUpdate = useCallback((updated: ApplicationSummary) => {
@@ -86,9 +125,8 @@ export default function DashboardCPIntegrated() {
       const exists = prev.applications.find(app => app.id === updated.id);
 
       // Verificar si la postulación coincide con los filtros actuales
-      // Si el filtro está vacío, considerar como si pasara (no ha sido inicializado aún)
       const matchesStatusFilter = filterStatus === '__all__' || filterStatus === updated.status;
-      const matchesProcessFilter = filterProcess === '__all__' || !filterProcess || filterProcess === updated.processId;
+      const matchesProcessFilter = !processId || processId === updated.processId;
       const matchesCedulaFilter = !debouncedSearchCedula || (updated.teacherIdentification?.includes(debouncedSearchCedula) ?? false);
 
       const passesFilters = matchesStatusFilter && matchesProcessFilter && matchesCedulaFilter;
@@ -130,7 +168,7 @@ export default function DashboardCPIntegrated() {
         }
       }
     });
-  }, [filterStatus, filterProcess, debouncedSearchCedula]);
+  }, [filterStatus, processId, debouncedSearchCedula]);
 
   // Suscribirse a actualizaciones en tiempo real
   useEffect(() => {
@@ -139,10 +177,6 @@ export default function DashboardCPIntegrated() {
   }, [subscribe, handleApplicationUpdate]);
 
   const { stats, applications } = data || { stats: { totalApplications: 0, pendingReview: 0, approvedByCP: 0, rejectedByCP: 0, approvalRatePercentage: 0, averageDaysToDecision: 0 }, applications: [] };
-
-  const handleExportCSV = () => {
-    exportCpDashboardToCSV(data);
-  };
 
   const statCards = [
     {
@@ -167,88 +201,81 @@ export default function DashboardCPIntegrated() {
     }
   ];
 
+  const hasActiveFilters = filterStatus !== '__all__' || searchCedula || filterFaculty !== '__all__' || filterDecisionDate;
+
   return (
     <div className={`space-y-6 transition-opacity duration-300 ${loading ? 'opacity-60' : 'opacity-100'}`}>
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Panel de Control - CP</h1>
-          <p className="text-muted-foreground">Datos consolidados y análisis de postulaciones</p>
-        </div>
-        <Button
-          onClick={handleExportCSV}
-          className="bg-[#00345E] hover:bg-[#002A4B]"
-        >
-          <Download className="w-4 h-4 mr-2" />
-          Exportar CSV
-        </Button>
+      <div>
+        <h1 className="text-3xl font-bold">Panel de Control - CP</h1>
+        <p className="text-muted-foreground">Datos consolidados y análisis de postulaciones</p>
       </div>
 
-      {/* Filtros */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Filtros</CardTitle>
-        </CardHeader>
-        <CardContent className="flex gap-4 flex-wrap">
-          <Input
-            placeholder="Buscar por cédula..."
-            value={searchCedula}
-            onChange={(e) => setSearchCedula(e.target.value)}
-            disabled={loading}
-            className="flex-1 min-w-[200px]"
-          />
-
-          {selectedProcess ? (
-            <div className="px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-sm text-gray-600">
-                Trabajando en: <span className="font-semibold text-blue-900">{selectedProcess.name}</span>
+      {/* Acciones rápidas: qué hacer ahora */}
+      <Card className={stats.pendingReview > 0 ? 'border-[#C9982E] bg-amber-50/50' : undefined}>
+        <CardContent className="flex flex-wrap items-center justify-between gap-4 py-5">
+          <div className="flex items-center gap-3">
+            <Clock className={`h-5 w-5 ${stats.pendingReview > 0 ? 'text-[#C9982E]' : 'text-muted-foreground'}`} />
+            <div>
+              <p className="text-sm">
+                {hasUsableSession ? (
+                  stats.pendingReview > 0 ? (
+                    <>
+                      Tiene <span className="font-semibold">{stats.pendingReview}</span> postulación
+                      {stats.pendingReview === 1 ? '' : 'es'} pendiente{stats.pendingReview === 1 ? '' : 's'} de revisión
+                      en su sesión activa ({activeSession!.facultyName}).
+                    </>
+                  ) : (
+                    <>Su sesión activa ({activeSession!.facultyName}) no tiene postulaciones pendientes.</>
+                  )
+                ) : stats.pendingReview > 0 ? (
+                  <>
+                    Tiene <span className="font-semibold">{stats.pendingReview}</span> postulación
+                    {stats.pendingReview === 1 ? '' : 'es'} pendiente{stats.pendingReview === 1 ? '' : 's'} de revisión
+                    en el proceso (todas las facultades).
+                  </>
+                ) : (
+                  'No tiene postulaciones pendientes de revisión.'
+                )}
               </p>
+              {!hasUsableSession && pendingByFaculty.length > 0 && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Para revisarlas debe iniciar una sesión de revisión con la facultad correspondiente:
+                </p>
+              )}
+              {hasUsableSession && stats.pendingReview === 0 && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Si hay pendientes en otra facultad, cambie de sesión desde "Sesiones y actas".
+                </p>
+              )}
             </div>
-          ) : (
-            <Select value={filterProcess} onValueChange={setFilterProcess} disabled={loading}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Todos los procesos" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">Todos los procesos</SelectItem>
-                {processes.map(process => (
-                  <SelectItem key={process.id} value={process.id}>
-                    {process.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-
-          <Select value={filterStatus} onValueChange={setFilterStatus} disabled={loading}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Todos los estados" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">Todos los estados</SelectItem>
-              {Object.entries(STATUS_LABELS).map(([key, label]) => (
-                <SelectItem key={key} value={key}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {((filterProcess !== '__all__') || (filterStatus !== '__all__') || searchCedula) && (
-            <Button
-              variant="outline"
-              onClick={() => {
-                setFilterProcess('__all__');
-                setFilterStatus('__all__');
-                setSearchCedula('');
-              }}
-              disabled={loading}
-            >
-              Limpiar filtros
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {hasUsableSession && (
+              <Button className="bg-[#00345E] hover:bg-[#002A4B]" onClick={() => navigate('/postulaciones')}>
+                Revisar postulaciones
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => navigate('/sesiones')}>
+              Sesiones y actas
             </Button>
-          )}
+          </div>
         </CardContent>
-        {loading && (
-          <div className="h-1 bg-gradient-to-r from-blue-500 via-blue-400 to-transparent animate-pulse" />
+        {!hasUsableSession && pendingByFaculty.length > 0 && (
+          <CardContent className="flex flex-wrap gap-2 pt-0 pb-5">
+            {pendingByFaculty.map((f) => (
+              <Button
+                key={f.facultyId || f.facultyName}
+                variant="outline"
+                size="sm"
+                className="border-[#C9982E] bg-white"
+                onClick={() => navigate('/sesiones', { state: { autoOpenFacultyId: f.facultyId } })}
+              >
+                Iniciar sesión: {f.facultyName}
+                <Badge className="ml-2 bg-[#C9982E]">{f.count}</Badge>
+              </Button>
+            ))}
+          </CardContent>
         )}
       </Card>
 
@@ -304,19 +331,84 @@ export default function DashboardCPIntegrated() {
         </Card>
       </div>
 
-      {/* Tabla de postulaciones */}
+      {/* Detalle de postulaciones */}
       <Card>
         <CardHeader>
-          <CardTitle>Postulaciones ({applications.length})</CardTitle>
+          <CardTitle>Detalle de postulaciones ({applications.length})</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Filtre para analizar el detalle. Para aprobar o rechazar, use la sección Postulaciones.
+          </p>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          <div className="flex gap-4 flex-wrap">
+            <Input
+              placeholder="Buscar por cédula..."
+              value={searchCedula}
+              onChange={(e) => setSearchCedula(e.target.value)}
+              disabled={loading}
+              className="flex-1 min-w-[200px]"
+            />
+
+            <Select value={filterStatus} onValueChange={setFilterStatus} disabled={loading}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Todos los estados" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Todos los estados</SelectItem>
+                {Object.entries(STATUS_LABELS).map(([key, label]) => (
+                  <SelectItem key={key} value={key}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={filterFaculty} onValueChange={setFilterFaculty} disabled={loading}>
+              <SelectTrigger className="w-[220px]">
+                <SelectValue placeholder="Todas las facultades" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Todas las facultades</SelectItem>
+                {faculties.map((faculty) => (
+                  <SelectItem key={faculty.id} value={faculty.id}>
+                    {faculty.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Input
+              type="date"
+              value={filterDecisionDate}
+              onChange={(e) => setFilterDecisionDate(e.target.value)}
+              disabled={loading}
+              className="w-[180px]"
+              title="Filtrar por día de aprobación/rechazo de CP"
+            />
+
+            {hasActiveFilters && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setFilterStatus('__all__');
+                  setSearchCedula('');
+                  setFilterFaculty('__all__');
+                  setFilterDecisionDate('');
+                }}
+                disabled={loading}
+              >
+                Limpiar filtros
+              </Button>
+            )}
+          </div>
+
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Docente</TableHead>
                   <TableHead>Cédula</TableHead>
-                  <TableHead>Proceso</TableHead>
+                  <TableHead>Facultad</TableHead>
                   <TableHead>Transición</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead>Enviada</TableHead>
@@ -329,7 +421,7 @@ export default function DashboardCPIntegrated() {
                   <TableRow key={app.applicationId} className="hover:bg-secondary">
                     <TableCell className="font-medium">{app.teacherName}</TableCell>
                     <TableCell>{app.teacherIdentification}</TableCell>
-                    <TableCell>{app.processName}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{app.facultyName ?? '—'}</TableCell>
                     <TableCell className="text-sm">
                       {app.fromPosition} → {app.toPosition}
                     </TableCell>

@@ -20,6 +20,8 @@ export interface CpApplicationReport {
   daysToDecision?: number;
   scorePct?: number;
   currentReviewerName?: string;
+  facultyId?: string | null;
+  facultyName?: string | null;
 }
 
 export interface CpDashboardData {

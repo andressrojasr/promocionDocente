@@ -17,6 +17,8 @@ import {
 } from '../components/ui/select';
 import { cn } from '../components/ui/utils';
 import { createProcess, fetchRequirementDefaults } from '../services/processes-service';
+import { CommissionMembersEditor, type CommissionMemberDraft } from '../components/CommissionMembersEditor';
+import { DEFAULT_COMMISSION_CARGOS } from '../constants/commission-cargos';
 import type { RequirementConfig } from '../types/api';
 
 const LANGUAGE_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
@@ -196,6 +198,9 @@ export default function CrearPromocion() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [commissionMembers, setCommissionMembers] = useState<CommissionMemberDraft[]>(
+    DEFAULT_COMMISSION_CARGOS.map((cargoLabel) => ({ cargoLabel, teacher: null }))
+  );
 
   useEffect(() => {
     fetchRequirementDefaults()
@@ -229,6 +234,10 @@ export default function CrearPromocion() {
       toast.error('La fecha de cierre debe ser posterior a la fecha de inicio.');
       return;
     }
+    if (commissionMembers.some((m) => !m.teacher)) {
+      toast.error('Debe integrar los 6 cargos de la comisión principal de promoción.');
+      return;
+    }
 
     try {
       setSaving(true);
@@ -237,7 +246,13 @@ export default function CrearPromocion() {
         description: descripcion.trim() || null,
         startDate: new Date(fechaInicio).toISOString(),
         endDate: new Date(`${fechaCierre}T23:59:59`).toISOString(),
-        requirements
+        requirements,
+        commissionMembers: commissionMembers.map((m) => ({
+          cargoLabel: m.cargoLabel,
+          teacherIdentification: m.teacher!.identification,
+          teacherFullName: m.teacher!.fullName,
+          teacherExternalId: m.teacher!.teacherId
+        }))
       });
       toast.success('Proceso de promoción creado correctamente.');
       navigate(`/promociones/${process.summary.id}`);
@@ -333,6 +348,19 @@ export default function CrearPromocion() {
               );
             })
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Comisión principal de promoción</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Integre los 6 cargos de la comisión que aprobará las postulaciones de este proceso. Busque a cada
+            docente/autoridad por nombre o cédula.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <CommissionMembersEditor members={commissionMembers} onChange={setCommissionMembers} disabled={saving} />
         </CardContent>
       </Card>
 

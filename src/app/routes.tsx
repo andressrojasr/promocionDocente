@@ -9,6 +9,7 @@ import DashboardAdmin from './pages/DashboardAdmin';
 import DashboardComisionAcademica from './pages/DashboardComisionAcademica';
 import DashboardDocente from './pages/DashboardDocente';
 import DashboardCPIntegrated from './pages/DashboardCPIntegrated';
+import DashboardCA from './pages/DashboardCA';
 import GestionUsuarios from './pages/GestionUsuarios';
 import ListaPromociones from './pages/ListaPromociones';
 import DetallePromocion from './pages/DetallePromocion';
@@ -55,7 +56,7 @@ function DashboardRouter() {
     case 'comision_promocion':
       return <DashboardCPIntegrated />;
     case 'comision_apelaciones':
-      return <DashboardComisionAcademica />;
+      return <DashboardCA />;
     default:
       return <Navigate to="/login" replace />;
   }

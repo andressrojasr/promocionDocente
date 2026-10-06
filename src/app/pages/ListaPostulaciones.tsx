@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router';
-import { Clock, Download, Eye } from 'lucide-react';
+import { Clock, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import {
@@ -21,14 +21,6 @@ import {
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from '../components/ui/dialog';
 import { ApplicationStatusBadge } from '../components/ApplicationStatusBadge';
 import { useAuth } from '../context/AuthContext';
 import { useSelectedProcess } from '../context/ProcessContext';
@@ -38,8 +30,8 @@ import { fetchApplications } from '../services/applications-service';
 import { fetchProcesses } from '../services/processes-service';
 import { fetchFaculties } from '../services/faculties-service';
 import { fetchReviewSessionDetail } from '../services/review-sessions-service';
-import { downloadCpActaBySession } from '../services/actas-service';
-import { formatDate, formatDateTime } from '../utils/format';
+import { ReviewSessionDialog } from '../components/ReviewSessionDialog';
+import { formatDateTime } from '../utils/format';
 import type { ApplicationSummary, Faculty, ProcessSummary, ReviewSession } from '../types/api';
 
 const SIMPLE_STATUS_LABELS: Record<string, string> = {
@@ -74,7 +66,6 @@ export default function ListaPostulaciones() {
   const [cpTab, setCpTab] = useState<'pending' | 'decided'>('pending');
   const [viewingSession, setViewingSession] = useState<ReviewSession | null>(null);
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
-  const [downloadingSessionId, setDownloadingSessionId] = useState<string | null>(null);
 
   const isTeacher = user?.backendRole === 'teacher';
   const isTH = user?.backendRole === 'th';
@@ -198,18 +189,6 @@ export default function ListaPostulaciones() {
       .catch((error: unknown) =>
         toast.error(error instanceof Error ? error.message : 'No se pudo cargar la sesión.'))
       .finally(() => setLoadingSessionId(null));
-  };
-
-  const handleDownloadFromDialog = async () => {
-    if (!viewingSession) return;
-    try {
-      setDownloadingSessionId(viewingSession.id);
-      await downloadCpActaBySession(viewingSession.id, viewingSession.facultyName);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo generar el acta.');
-    } finally {
-      setDownloadingSessionId(null);
-    }
   };
 
   return (
@@ -431,55 +410,7 @@ export default function ListaPostulaciones() {
         </CardContent>
       </Card>
 
-      <Dialog open={viewingSession !== null} onOpenChange={(open) => !open && setViewingSession(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Sesión de revisión</DialogTitle>
-            <DialogDescription>Comisión que aprobó o rechazó esta postulación.</DialogDescription>
-          </DialogHeader>
-          {viewingSession && (
-            <div className="space-y-2 rounded-lg border p-4 text-sm">
-              <p>
-                <span className="text-muted-foreground">Proceso: </span>
-                <span className="font-medium">{viewingSession.processName}</span>
-              </p>
-              <p>
-                <span className="text-muted-foreground">Facultad: </span>
-                <span className="font-medium">{viewingSession.facultyName}</span>
-              </p>
-              <p>
-                <span className="text-muted-foreground">Comisión: </span>
-                <span className="font-medium">
-                  {viewingSession.commissionIsPrincipal ? 'Principal' : `Sesión del ${formatDate(viewingSession.commissionDate)}`}
-                </span>
-              </p>
-              <p>
-                <span className="text-muted-foreground">Creada por: </span>
-                <span className="font-medium">{viewingSession.createdByName}</span>
-              </p>
-              <p>
-                <span className="text-muted-foreground">Fecha: </span>
-                <span className="font-medium">{formatDateTime(viewingSession.createdAt)}</span>
-              </p>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setViewingSession(null)}>
-              Cerrar
-            </Button>
-            {isCp && viewingSession && (
-              <Button
-                className="bg-[#00345E]"
-                disabled={downloadingSessionId === viewingSession.id}
-                onClick={() => void handleDownloadFromDialog()}
-              >
-                <Download className="mr-2 h-4 w-4" />
-                {downloadingSessionId === viewingSession.id ? 'Generando...' : 'Descargar acta PDF'}
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ReviewSessionDialog session={viewingSession} onClose={() => setViewingSession(null)} showActa={isCp} />
     </div>
   );
 }

@@ -8,11 +8,12 @@ import type {
 export function submitApplication(
   processId: string,
   items: ApplicationItemPayload[],
-  externalAccessToken: string
+  externalAccessToken: string,
+  acceptedTerms: boolean
 ): Promise<ApplicationDetail> {
   return httpClient.post<ApplicationDetail>(
     '/api/v1/applications',
-    { processId, items },
+    { processId, items, acceptedTerms },
     { 'X-External-Token': externalAccessToken }
   );
 }

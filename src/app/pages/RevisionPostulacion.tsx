@@ -27,7 +27,8 @@ import {
   reviewApplication
 } from '../services/applications-service';
 import { ApiError } from '../services/http-client';
-import { ITEM_TYPE_LABELS, REVIEW_STAGE_LABELS, formatDateTime } from '../utils/format';
+import { REVIEW_STAGE_LABELS, formatDateTime } from '../utils/format';
+import { sectionOrderFor, sectionTitleFor } from '../utils/requirement-labels';
 import type { ApplicationDetail, ApplicationItemType, ApplicationStatus, CommissionType } from '../types/api';
 
 /** Estado que puede revisar cada rol (espejo de la máquina de estados del backend). */
@@ -106,6 +107,11 @@ export default function RevisionPostulacion() {
     map.set(item.itemType, list);
     return map;
   }, new Map());
+
+  const eligibilityRequirements = detail.eligibility?.requirements;
+  const sortedItemGroups = [...itemsByType.entries()].sort(
+    ([a], [b]) => sectionOrderFor(a, eligibilityRequirements) - sectionOrderFor(b, eligibilityRequirements)
+  );
 
   const handleDecision = async () => {
     if (!id || !decisionDialog) return;
@@ -301,10 +307,10 @@ export default function RevisionPostulacion() {
         </TabsList>
 
         <TabsContent value="documentos" className="space-y-4">
-          {[...itemsByType.entries()].map(([itemType, items]) => (
+          {sortedItemGroups.map(([itemType, items]) => (
             <Card key={itemType}>
               <CardHeader>
-                <CardTitle className="text-base">{ITEM_TYPE_LABELS[itemType]}</CardTitle>
+                <CardTitle className="text-base">{sectionTitleFor(itemType, eligibilityRequirements)}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
                 {items.map((item) => (

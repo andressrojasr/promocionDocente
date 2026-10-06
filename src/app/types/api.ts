@@ -258,6 +258,7 @@ export interface ApplicationSummary {
   teacherUserId: string;
   teacherName: string;
   teacherId: string | null;
+  teacherIdentification?: string | null;
   fromPosition: string;
   toPosition: string;
   fromLabel: string;
@@ -454,4 +455,16 @@ export interface NotificationList {
 export interface DashboardStats {
   role: BackendRole;
   counters: Record<string, number>;
+}
+
+/** Categoría (transición) con decisiones de CP en una sesión; el acta se genera por categoría. */
+export interface ActaCategory {
+  fromPosition: string;
+  toPosition: string;
+  fromLabel: string;
+  toLabel: string;
+  approvedCount: number;
+  rejectedCount: number;
+  /** Rechazos en plazo de apelación o con apelación en trámite: mientras haya, el acta es provisional. */
+  pendingAppeals: number;
 }

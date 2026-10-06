@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
-import { ChevronDown, ChevronUp, Download, Lock, Plus, Star, X } from 'lucide-react';
+import { CalendarDays, ChevronDown, ChevronUp, Lock, Plus, Star, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -16,7 +16,7 @@ import { useReviewSession } from '../context/ReviewSessionContext';
 import { fetchFaculties } from '../services/faculties-service';
 import { fetchCommissions, createCommission } from '../services/commissions-service';
 import { fetchReviewSessions, createReviewSession, closeReviewSession } from '../services/review-sessions-service';
-import { downloadCpActaBySession } from '../services/actas-service';
+import { ActaDownloadButton } from '../components/ActaDownloadButton';
 import { buildDraftFromPrincipal } from '../utils/commission-draft';
 import { formatDate, formatDateTime } from '../utils/format';
 import type { Commission, CommissionType, Faculty, ReviewSession } from '../types/api';
@@ -44,9 +44,9 @@ export default function Sesiones() {
   const [closedFilter, setClosedFilter] = useState<ClosedFilter>('active');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [sessions, setSessions] = useState<ReviewSession[]>([]);
+  const [allSessions, setAllSessions] = useState<ReviewSession[]>([]);
+  const [showDates, setShowDates] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [closingId, setClosingId] = useState<string | null>(null);
 
   // Panel inline "+ Nueva sesión"
@@ -84,19 +84,13 @@ export default function Sesiones() {
 
   const loadSessions = () => {
     if (!processId) {
-      setSessions([]);
+      setAllSessions([]);
       return;
     }
 
     setLoading(true);
-    fetchReviewSessions({
-      processId,
-      facultyId: facultyId !== '__all__' ? facultyId : undefined,
-      dateFrom: dateFrom || undefined,
-      dateTo: dateTo || undefined,
-      closed: closedFilter === 'active' ? false : closedFilter === 'closed' ? true : undefined
-    })
-      .then(setSessions)
+    fetchReviewSessions({ processId })
+      .then(setAllSessions)
       .catch((error: unknown) =>
         toast.error(error instanceof Error ? error.message : 'No se pudieron buscar las sesiones.'))
       .finally(() => setLoading(false));
@@ -105,23 +99,57 @@ export default function Sesiones() {
   useEffect(() => {
     loadSessions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [processId, facultyId, closedFilter, dateFrom, dateTo]);
+  }, [processId]);
+
+  const localDate = (iso: string) => new Date(iso).toLocaleDateString('en-CA');
+
+  const byDateAndFaculty = useMemo(
+    () =>
+      allSessions.filter((session) => {
+        const day = localDate(session.createdAt);
+        return (!dateFrom || day >= dateFrom) && (!dateTo || day <= dateTo);
+      }),
+    [allSessions, dateFrom, dateTo]
+  );
+
+  const stateCounts = useMemo(() => {
+    const scoped = byDateAndFaculty.filter((s) => facultyId === '__all__' || s.facultyId === facultyId);
+    return {
+      active: scoped.filter((s) => s.closedAt === null).length,
+      closed: scoped.filter((s) => s.closedAt !== null).length,
+      all: scoped.length
+    };
+  }, [byDateAndFaculty, facultyId]);
+
+  const facultyCounts = useMemo(() => {
+    const scoped = byDateAndFaculty.filter(
+      (s) => closedFilter === 'all' || (closedFilter === 'closed') === (s.closedAt !== null)
+    );
+    const map = new Map<string, { id: string; name: string; count: number }>();
+    scoped.forEach((s) => {
+      const entry = map.get(s.facultyId) ?? { id: s.facultyId, name: s.facultyName, count: 0 };
+      entry.count += 1;
+      map.set(s.facultyId, entry);
+    });
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [byDateAndFaculty, closedFilter]);
+
+  const sessions = useMemo(
+    () =>
+      byDateAndFaculty.filter(
+        (s) =>
+          (facultyId === '__all__' || s.facultyId === facultyId) &&
+          (closedFilter === 'all' || (closedFilter === 'closed') === (s.closedAt !== null))
+      ),
+    [byDateAndFaculty, facultyId, closedFilter]
+  );
+
+  const hasExtraFilters = facultyId !== '__all__' || !!dateFrom || !!dateTo;
 
   const handleContinue = (session: ReviewSession) => {
     setActiveSession(session);
     toast.success('Sesión activada.');
     navigate(listPath);
-  };
-
-  const handleDownload = async (session: ReviewSession) => {
-    try {
-      setDownloadingId(session.id);
-      await downloadCpActaBySession(session.id, session.facultyName);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo generar el acta.');
-    } finally {
-      setDownloadingId(null);
-    }
   };
 
   const handleClose = async (session: ReviewSession) => {
@@ -421,61 +449,96 @@ export default function Sesiones() {
         </Card>
       )}
 
-      <Card>
-        <CardContent className="flex flex-wrap items-end gap-4 pt-6">
-          <div className="space-y-1.5">
-            <Label className="text-xs">Estado</Label>
-            <Select value={closedFilter} onValueChange={(v) => setClosedFilter(v as ClosedFilter)} disabled={loading}>
-              <SelectTrigger className="w-44">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="active">Activas</SelectItem>
-                <SelectItem value="closed">Cerradas</SelectItem>
-                <SelectItem value="all">Todas</SelectItem>
-              </SelectContent>
-            </Select>
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="inline-flex rounded-lg border bg-secondary/40 p-1">
+            {([
+              ['active', 'Activas', stateCounts.active],
+              ['closed', 'Cerradas', stateCounts.closed],
+              ['all', 'Todas', stateCounts.all]
+            ] as const).map(([value, label, count]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setClosedFilter(value)}
+                className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
+                  closedFilter === value ? 'bg-[#00345E] text-white' : 'text-muted-foreground hover:bg-secondary'
+                }`}
+              >
+                {label} ({count})
+              </button>
+            ))}
           </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Facultad</Label>
-            <Select value={facultyId} onValueChange={setFacultyId} disabled={loading}>
-              <SelectTrigger className="w-60">
-                <SelectValue placeholder="Todas las facultades" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">Todas las facultades</SelectItem>
-                {faculties.map((faculty) => (
-                  <SelectItem key={faculty.id} value={faculty.id}>
-                    {faculty.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Desde</Label>
-            <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} disabled={loading} />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Hasta</Label>
-            <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} disabled={loading} />
-          </div>
-          {(facultyId !== '__all__' || dateFrom || dateTo || closedFilter !== 'active') && (
+
+          <div className="flex items-center gap-2">
             <Button
-              variant="outline"
-              onClick={() => {
-                setFacultyId('__all__');
-                setDateFrom('');
-                setDateTo('');
-                setClosedFilter('active');
-              }}
-              disabled={loading}
+              variant={dateFrom || dateTo ? 'default' : 'outline'}
+              size="sm"
+              className={dateFrom || dateTo ? 'bg-[#00345E]' : undefined}
+              onClick={() => setShowDates((open) => !open)}
             >
-              Limpiar filtros
+              <CalendarDays className="mr-2 h-4 w-4" />
+              {dateFrom || dateTo ? 'Fechas aplicadas' : 'Filtrar por fecha'}
             </Button>
-          )}
-        </CardContent>
-      </Card>
+            {hasExtraFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setFacultyId('__all__');
+                  setDateFrom('');
+                  setDateTo('');
+                  setShowDates(false);
+                }}
+              >
+                <X className="mr-1 h-4 w-4" />
+                Limpiar
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {showDates && (
+          <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-white p-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Desde</Label>
+              <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-44" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Hasta</Label>
+              <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-44" />
+            </div>
+          </div>
+        )}
+
+        {facultyCounts.length > 1 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-muted-foreground">Facultad:</span>
+            <button
+              type="button"
+              onClick={() => setFacultyId('__all__')}
+              className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                facultyId === '__all__' ? 'border-[#00345E] bg-[#00345E] text-white' : 'bg-white hover:bg-secondary'
+              }`}
+            >
+              Todas
+            </button>
+            {facultyCounts.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                title={f.name}
+                onClick={() => setFacultyId(facultyId === f.id ? '__all__' : f.id)}
+                className={`max-w-xs truncate rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                  facultyId === f.id ? 'border-[#00345E] bg-[#00345E] text-white' : 'bg-white hover:bg-secondary'
+                }`}
+              >
+                {f.name} ({f.count})
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       <Card>
         <CardHeader>
@@ -526,17 +589,7 @@ export default function Sesiones() {
                         <Button variant="outline" size="sm" disabled={isClosed} onClick={() => handleContinue(session)}>
                           Continuar
                         </Button>
-                        {isCp && (
-                          <Button
-                            size="sm"
-                            className="bg-[#00345E]"
-                            disabled={downloadingId === session.id}
-                            onClick={() => void handleDownload(session)}
-                          >
-                            <Download className="mr-1 h-3.5 w-3.5" />
-                            {downloadingId === session.id ? 'Generando...' : 'Acta PDF'}
-                          </Button>
-                        )}
+                        {isCp && <ActaDownloadButton session={session} />}
                         {!isClosed && (
                           <Button
                             variant="outline"
@@ -555,7 +608,16 @@ export default function Sesiones() {
                 {sessions.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
-                      No hay sesiones que coincidan con los filtros.
+                      {closedFilter === 'active' && stateCounts.closed > 0 ? (
+                        <>
+                          No hay sesiones activas.{' '}
+                          <button type="button" className="text-[#00345E] underline" onClick={() => setClosedFilter('closed')}>
+                            Ver las {stateCounts.closed} cerradas
+                          </button>
+                        </>
+                      ) : (
+                        'No hay sesiones que coincidan con los filtros.'
+                      )}
                     </TableCell>
                   </TableRow>
                 )}

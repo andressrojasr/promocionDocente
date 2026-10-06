@@ -7,12 +7,26 @@ import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Checkbox } from '../components/ui/checkbox';
 import { Alert, AlertDescription } from '../components/ui/alert';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '../components/ui/dialog';
+import {
+  APPLICATION_TERMS_INTRO,
+  APPLICATION_TERMS_ITEMS,
+  APPLICATION_TERMS_LEAD
+} from '../constants/application-terms';
 import { useAuth } from '../context/AuthContext';
 import { fetchEligibility } from '../services/processes-service';
 import { fetchMyProfile } from '../services/teacher-service';
 import { submitApplication } from '../services/applications-service';
 import { ApiError } from '../services/http-client';
 import { ITEM_TYPE_LABELS, formatDate } from '../utils/format';
+import { sectionTitleFor } from '../utils/requirement-labels';
 import type {
   ApplicationItemPayload,
   ApplicationItemType,
@@ -27,6 +41,8 @@ interface SelectableItem {
   subtitle: string;
   documentUrl: string | null;
   documentDate: string | null;
+  /** Solo capacitaciones recibidas: PEDAGOGICAL o DISCIPLINARY. */
+  trainingCategory?: string;
 }
 
 /** Mapea requisitos a tipos de items requeridos con mínimos. */
@@ -139,6 +155,7 @@ function buildSelectableItems(profile: TeacherProfileData): Record<ApplicationIt
       externalItemId: t.id,
       title: t.name,
       subtitle: `${t.institution} · ${t.hours} horas · ${t.trainingCategory === 'PEDAGOGICAL' ? 'Pedagógica' : 'Disciplinar'}`,
+      trainingCategory: t.trainingCategory,
       documentUrl: t.supportingDocumentUrl || null,
       documentDate: t.startDate
     })),
@@ -277,6 +294,8 @@ export default function FormularioPostulacion() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   useEffect(() => {
     if (!id || user?.backendRole !== 'teacher') return;
@@ -357,14 +376,20 @@ export default function FormularioPostulacion() {
 
     try {
       setSubmitting(true);
-      await submitApplication(id, items, externalAccessToken);
+      await submitApplication(id, items, externalAccessToken, acceptedTerms);
       toast.success('Postulación enviada correctamente. Talento Humano revisará su documentación.');
       navigate('/postulaciones');
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'No se pudo enviar la postulación.');
     } finally {
       setSubmitting(false);
+      setConfirmOpen(false);
     }
+  };
+
+  const openConfirmation = () => {
+    setAcceptedTerms(false);
+    setConfirmOpen(true);
   };
 
   if (loading) {
@@ -510,6 +535,55 @@ export default function FormularioPostulacion() {
     };
   });
 
+  // Una tarjeta por requisito; las capacitaciones se separan en "normales" y "pedagógicas".
+  interface FormSection {
+    key: string;
+    title: string;
+    description: string;
+    requirement: (typeof requirementProgress)[number] | undefined;
+    items: SelectableItem[];
+  }
+
+  const sections = categories.flatMap<FormSection>((category) => {
+    const items = itemsByCategory?.[category] ?? [];
+
+    if (category === 'received_training') {
+      const general = requirementProgress.find((p) => p.requirement.requirementCode === 'TRAINING_HOURS');
+      const pedagogical = requirementProgress.find((p) => p.requirement.requirementCode === 'PEDAGOGICAL_HOURS');
+      if (general && pedagogical) {
+        return [
+          {
+            key: 'received_training:general',
+            title: general.label,
+            description: 'Capacitaciones no pedagógicas. Las pedagógicas que seleccione abajo también suman a estas horas.',
+            requirement: general,
+            items: items.filter((item) => item.trainingCategory !== 'PEDAGOGICAL')
+          },
+          {
+            key: 'received_training:pedagogical',
+            title: pedagogical.label,
+            description: 'Solo capacitaciones de categoría pedagógica.',
+            requirement: pedagogical,
+            items: items.filter((item) => item.trainingCategory === 'PEDAGOGICAL')
+          }
+        ];
+      }
+    }
+
+    return [{
+      key: category,
+      title: sectionTitleFor(category, eligibility?.requirements),
+      description: 'Marque los elementos que desea adjuntar como respaldo.',
+      requirement: requirementProgress.find((p) => p.requirement.itemType === category),
+      items
+    }];
+  }).sort((a, b) => {
+    // Mismo orden que el panel de requisitos
+    const rank = (section: FormSection) =>
+      section.requirement ? requirementProgress.indexOf(section.requirement) : Number.MAX_SAFE_INTEGER;
+    return rank(a) - rank(b);
+  });
+
   const unfulfilledRequirements = requirementProgress.filter((p) => !p.isMet);
   const canSubmit = selected.size > 0 && unfulfilledRequirements.length === 0;
 
@@ -573,9 +647,8 @@ export default function FormularioPostulacion() {
 
         {/* Panel Derecho - Items */}
         <div className="lg:col-span-3 space-y-6">
-          {categories.map((category) => {
-            const items = itemsByCategory?.[category] ?? [];
-            const requirementForCategory = requirementProgress.find((p) => p.requirement.itemType === category);
+          {sections.map((section) => {
+            const { items, requirement: requirementForCategory } = section;
             const minRequired = requirementForCategory?.required ?? 1;
             const selectedInCategory = requirementForCategory?.selected ?? 0;
             const totalValid = requirementForCategory?.totalValid ?? 0;
@@ -587,10 +660,10 @@ export default function FormularioPostulacion() {
               : items;
 
             return (
-              <Card key={category}>
+              <Card key={section.key}>
                 <CardHeader>
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-base">{ITEM_TYPE_LABELS[category]}</CardTitle>
+                    <CardTitle className="text-base">{section.title}</CardTitle>
                     <div className="flex items-center gap-2">
                       <Badge
                         variant="secondary"
@@ -606,7 +679,7 @@ export default function FormularioPostulacion() {
                     </div>
                   </div>
                   <CardDescription>
-                    {requirementForCategory?.label || 'Marque los elementos que desea adjuntar como respaldo.'}
+                    {section.description}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
@@ -672,7 +745,7 @@ export default function FormularioPostulacion() {
             Cancelar
           </Button>
           <Button
-            onClick={() => void handleSubmit()}
+            onClick={openConfirmation}
             disabled={submitting || !canSubmit}
             className="bg-[#00345E]"
             title={
@@ -688,6 +761,51 @@ export default function FormularioPostulacion() {
           </Button>
         </div>
       </div>
+
+      <Dialog open={confirmOpen} onOpenChange={(open) => !submitting && setConfirmOpen(open)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Confirmar envío de solicitud</DialogTitle>
+            <DialogDescription>{APPLICATION_TERMS_INTRO}</DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-[50vh] space-y-3 overflow-y-auto rounded-lg border bg-secondary/30 p-4 text-sm">
+            <p className="font-medium">{APPLICATION_TERMS_LEAD}</p>
+            <ol className="space-y-2">
+              {APPLICATION_TERMS_ITEMS.map((item, index) => (
+                <li key={index} className="flex gap-2">
+                  <span className="font-medium">{index + 1}.</span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          <label className="flex cursor-pointer items-start gap-3 text-sm">
+            <Checkbox
+              checked={acceptedTerms}
+              onCheckedChange={(checked) => setAcceptedTerms(checked === true)}
+              disabled={submitting}
+              className="mt-0.5"
+            />
+            <span>He leído y acepto las consideraciones anteriores y autorizo el envío definitivo de mi solicitud.</span>
+          </label>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={submitting}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => void handleSubmit()}
+              disabled={submitting || !acceptedTerms}
+              className="bg-[#00345E]"
+            >
+              <Send className="mr-2 h-4 w-4" />
+              {submitting ? 'Enviando...' : 'Confirmar y enviar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -88,7 +88,7 @@ export default function ListaPostulaciones() {
       .then(data => {
         setProcesses(data);
         // Para TH, usar el proceso seleccionado; para otros, el primer proceso por defecto
-        if (isTH && selectedProcess) {
+        if ((isTH || isTeacher) && selectedProcess) {
           setProcessFilter(selectedProcess.id);
         } else if (data.length > 0 && !processFilter) {
           setProcessFilter(data[0].id);
@@ -157,7 +157,7 @@ export default function ListaPostulaciones() {
     // CP ("Pendientes" y "Aprobadas y rechazadas") se fija al proceso+facultad de la sesión activa. TH usa el proceso seleccionado.
     const processToSend = (isCpPending || isCpDecided) && activeSession
       ? activeSession.processId
-      : isTH && selectedProcess ? selectedProcess.id : processFilter;
+      : (isTH || isTeacher) && selectedProcess ? selectedProcess.id : processFilter;
     const facultyToSend = (isCpPending || isCpDecided) && activeSession
       ? activeSession.facultyId
       : facultyFilter !== '__all__' ? facultyFilter : undefined;
@@ -248,7 +248,7 @@ export default function ListaPostulaciones() {
               </p>
             </div>
           )}
-          {!isReviewer && (
+          {!isReviewer && !isTeacher && (
             <Select value={processFilter} onValueChange={setProcessFilter} disabled={loading}>
               <SelectTrigger className="w-72">
                 <SelectValue placeholder="Seleccionar proceso" />
@@ -262,7 +262,7 @@ export default function ListaPostulaciones() {
               </SelectContent>
             </Select>
           )}
-          {!isCp && (
+          {!isCp && !isTeacher && (
             <Select value={statusFilter} onValueChange={setStatusFilter} disabled={loading}>
               <SelectTrigger className="w-72">
                 <SelectValue placeholder="Filtrar por estado" />

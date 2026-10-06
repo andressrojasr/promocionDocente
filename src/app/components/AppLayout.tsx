@@ -6,17 +6,11 @@ import { useAuth } from '../context/AuthContext';
 import { useSelectedProcess } from '../context/ProcessContext';
 import { useReviewSession } from '../context/ReviewSessionContext';
 import { navItems } from '../config/navigation';
+import utaLogo from '../../assets/uta-logo.png';
+import { BACKEND_ROLE_LABELS } from '../utils/format';
+import { useTeacherProfile } from '../hooks/useTeacherProfile';
 import { NotificationsBell } from './NotificationsBell';
 import { Button } from './ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from './ui/dropdown-menu';
-import { Avatar, AvatarFallback } from './ui/avatar';
 import { cn } from './ui/utils';
 import { closeReviewSession } from '../services/review-sessions-service';
 import type { AuthUser } from '../context/AuthContext';
@@ -25,14 +19,6 @@ import type { ProcessSummary, ReviewSession } from '../types/api';
 const SIDEBAR_CLOSE_DELAY_MS = 200;
 // El sidebar permanece colapsado por defecto y se expande temporalmente al pasar el mouse.
 const SIDEBAR_COLLAPSED_BY_DEFAULT = true;
-
-function getInitials(name: string) {
-  return name
-    .split(' ')
-    .map((part) => part[0])
-    .join('')
-    .toUpperCase();
-}
 
 interface SidebarProps {
   collapsed: boolean;
@@ -125,14 +111,17 @@ function TopBar({
   onCloseSession,
   closingSession
 }: TopBarProps) {
-  const showWorkContext = user?.rol === 'comision_promocion' || user?.rol === 'comision_apelaciones';
+  const isTeacher = user?.rol === 'docente';
+  const teacherProfile = useTeacherProfile(isTeacher);
+  const showWorkContext =
+    user?.rol === 'comision_promocion' || user?.rol === 'comision_apelaciones' || user?.rol === 'docente';
 
   return (
     <header className="bg-white border-b border-border px-6 py-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h2 className="text-xl">Universidad Técnica de Ambato</h2>
-          <p className="text-sm text-muted-foreground">Promoción Docente</p>
+        <div className="flex items-center gap-4">
+          <img src={utaLogo} alt="Universidad Técnica de Ambato" className="h-11 w-auto flex-none" />
+          <p className="hidden whitespace-nowrap border-l pl-4 text-sm font-medium sm:block">Promoción Docente</p>
         </div>
 
         {showWorkContext && (
@@ -170,31 +159,44 @@ function TopBar({
           </div>
         )}
 
-        <div className="flex items-center gap-4">
+        <div className="ml-auto flex items-center gap-4">
           <NotificationsBell />
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-3 hover:bg-secondary px-3 py-2 rounded-lg transition-colors">
-                <Avatar>
-                  <AvatarFallback className="bg-accent text-white">
-                    {user && getInitials(user.nombre)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="text-left">
-                  <p className="text-sm">{user?.nombre}</p>
-                  <p className="text-xs text-muted-foreground">{user?.rol.replace('_', ' ')}</p>
-                </div>
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel>Mi Cuenta</DropdownMenuLabel>
-              <DropdownMenuItem onClick={onLogout} className="text-red-600">
-                <LogOut className="w-4 h-4 mr-2" />
-                Cerrar Sesión
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex items-center gap-3">
+            <div className="min-w-0 text-right">
+              <p className="text-sm font-medium leading-tight">
+                {isTeacher ? (teacherProfile?.profile.fullName ?? user?.nombre) : user?.nombre}
+              </p>
+              {isTeacher ? (
+                teacherProfile && (
+                  <>
+                    <p className="text-xs text-muted-foreground leading-tight">
+                      C.I. {teacherProfile.profile.identification} · {teacherProfile.currentPositionLabel}
+                    </p>
+                    <p
+                      className="ml-auto max-w-[16rem] truncate text-xs text-muted-foreground leading-tight"
+                      title={teacherProfile.profile.dependency?.name}
+                    >
+                      {teacherProfile.profile.dependency?.name}
+                    </p>
+                  </>
+                )
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground leading-tight">
+                    {user ? BACKEND_ROLE_LABELS[user.backendRole] : ''}
+                  </p>
+                  <p className="ml-auto max-w-[16rem] truncate text-xs text-muted-foreground leading-tight" title={user?.email}>
+                    {user?.email}
+                  </p>
+                </>
+              )}
+            </div>
+            <Button variant="outline" size="sm" onClick={onLogout} className="flex-none text-red-600 hover:text-red-700">
+              <LogOut className="mr-2 h-4 w-4" />
+              Cerrar sesión
+            </Button>
+          </div>
         </div>
       </div>
     </header>

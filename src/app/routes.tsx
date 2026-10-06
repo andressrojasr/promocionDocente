@@ -33,9 +33,14 @@ function DashboardRouter() {
     return <Navigate to="/login" replace />;
   }
 
-  // Los docentes y TH van a promociones primero para seleccionar el proceso
-  if (user.rol === 'docente' || user.rol === 'talento_humano') {
+  // TH va a promociones primero para seleccionar el proceso
+  if (user.rol === 'talento_humano') {
     return <Navigate to="/promociones" replace />;
+  }
+
+  // El docente elige proceso una vez; después su inicio es "Mi postulación"
+  if (user.rol === 'docente') {
+    return selectedProcess ? <DashboardDocente /> : <Navigate to="/promociones" replace />;
   }
 
   // CP y CA sin proceso seleccionado van a promociones

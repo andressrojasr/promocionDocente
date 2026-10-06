@@ -1,159 +1,176 @@
 import { useEffect, useState } from 'react';
-import { FileText, Clock, CheckCircle, Upload, ClipboardCheck } from 'lucide-react';
 import { useNavigate } from 'react-router';
+import { Building2, CalendarDays, ClipboardList, FileSearch, IdCard, Send, UserRound, Award } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { ApplicationStatusBadge, ProcessStatusBadge } from '../components/ApplicationStatusBadge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
-import { fetchDashboardStats } from '../services/notifications-service';
-import { fetchApplications } from '../services/applications-service';
-import { fetchProcesses } from '../services/processes-service';
-import { formatDate, formatDateTime } from '../utils/format';
-import type { ApplicationSummary, ProcessSummary } from '../types/api';
+import { ApplicationTimeline } from '../components/ApplicationTimeline';
+import { useSelectedProcess } from '../context/ProcessContext';
+import { fetchApplicationDetail, fetchApplications } from '../services/applications-service';
+import { useTeacherProfile } from '../hooks/useTeacherProfile';
+import { buildTimeline, statusHeadline } from '../utils/application-timeline';
+import { formatDate } from '../utils/format';
+import type { ApplicationDetail } from '../types/api';
 
+const TONE_CLASS = {
+  info: 'border-blue-200 bg-blue-50 text-blue-900',
+  success: 'border-green-300 bg-green-50 text-green-900',
+  danger: 'border-red-200 bg-red-50 text-red-900',
+  warning: 'border-amber-300 bg-amber-50 text-amber-900'
+} as const;
+
+/** "Mi postulación": en qué proceso trabaja el docente, en qué estado está su solicitud y qué sigue. */
 export default function DashboardDocente() {
   const navigate = useNavigate();
-  const [counters, setCounters] = useState<Record<string, number>>({});
-  const [applications, setApplications] = useState<ApplicationSummary[]>([]);
-  const [openProcesses, setOpenProcesses] = useState<ProcessSummary[]>([]);
+  const { selectedProcess } = useSelectedProcess();
+  const [detail, setDetail] = useState<ApplicationDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const profile = useTeacherProfile();
+
+  const processId = selectedProcess?.id;
 
   useEffect(() => {
-    Promise.all([fetchDashboardStats(), fetchApplications(), fetchProcesses()])
-      .then(([stats, apps, processes]) => {
-        setCounters(stats.counters);
-        setApplications(apps);
-        setOpenProcesses(processes.filter((p) => p.status === 'open'));
+    if (!processId) return;
+
+    setLoading(true);
+    setDetail(null);
+    fetchApplications(undefined, processId)
+      .then(async (applications) => {
+        const mine = applications[0];
+        if (mine) {
+          setDetail(await fetchApplicationDetail(mine.id));
+        }
       })
       .catch((error: unknown) =>
-        toast.error(error instanceof Error ? error.message : 'No se pudo cargar el dashboard.'));
-  }, []);
+        toast.error(error instanceof Error ? error.message : 'No se pudo cargar su postulación.'))
+      .finally(() => setLoading(false));
+  }, [processId]);
 
-  const stats = [
-    { title: 'Mis Postulaciones', value: counters.myApplications ?? 0, icon: <Upload className="w-6 h-6 text-[#C9982E]" /> },
-    { title: 'En Proceso', value: counters.myApplicationsInProgress ?? 0, icon: <Clock className="w-6 h-6 text-blue-600" /> },
-    { title: 'Aprobadas', value: counters.myApplicationsApproved ?? 0, icon: <CheckCircle className="w-6 h-6 text-green-600" /> },
-    { title: 'Procesos Abiertos', value: counters.openProcesses ?? 0, icon: <FileText className="w-6 h-6 text-purple-600" /> }
-  ];
+  if (!selectedProcess) {
+    return null;
+  }
+
+  const isOpen = selectedProcess.status === 'open';
+  const headline = detail ? statusHeadline(detail) : null;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1>Panel del Docente</h1>
-          <p className="text-muted-foreground">Gestione sus postulaciones y revise los procesos disponibles</p>
-        </div>
-        <div className="flex gap-3">
-          <Button
-            onClick={() => navigate('/elegibilidad')}
-            variant="outline"
-            className="border-[#C9982E] text-[#C9982E] hover:bg-[#C9982E]/10"
-          >
-            <ClipboardCheck className="w-4 h-4 mr-2" />
-            Verificar Elegibilidad
-          </Button>
-          <Button onClick={() => navigate('/promociones')} className="bg-[#00345E] hover:bg-[#002A4B]">
-            <FileText className="w-4 h-4 mr-2" />
-            Ver Procesos
-          </Button>
+      <div>
+        <h1 className="text-2xl">Mi postulación</h1>
+        <div className="mt-1 flex flex-wrap items-center gap-3 text-muted-foreground">
+          <span className="font-medium text-foreground">{selectedProcess.name}</span>
+          <ProcessStatusBadge status={selectedProcess.status} />
+          <span className="flex items-center gap-1 text-sm">
+            <CalendarDays className="h-4 w-4" />
+            {formatDate(selectedProcess.startDate)} — {formatDate(selectedProcess.endDate)}
+          </span>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat, index) => (
-          <Card key={index}>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{stat.title}</p>
-                  <p className="text-3xl font-semibold mt-2">{stat.value}</p>
+      {profile && (
+        <Card>
+          <CardContent className="grid gap-4 py-5 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              { icon: <UserRound className="h-5 w-5" />, label: 'Docente', value: profile.profile.fullName },
+              { icon: <IdCard className="h-5 w-5" />, label: 'Cédula', value: profile.profile.identification },
+              { icon: <Building2 className="h-5 w-5" />, label: 'Facultad', value: profile.profile.dependency?.name || '—' },
+              {
+                icon: <Award className="h-5 w-5" />,
+                label: 'Posición actual',
+                value: profile.currentPositionLabel,
+                hint: profile.profile.currentPositionStartDate
+                  ? `Desde ${formatDate(profile.profile.currentPositionStartDate)}`
+                  : undefined
+              }
+            ].map((item) => (
+              <div key={item.label} className="flex items-start gap-3">
+                <span className="mt-0.5 rounded-lg bg-secondary p-2 text-[#00345E]">{item.icon}</span>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">{item.label}</p>
+                  <p className="font-medium leading-snug">{item.value}</p>
+                  {item.hint && <p className="text-xs text-muted-foreground">{item.hint}</p>}
                 </div>
-                <div className="bg-secondary p-3 rounded-lg">{stat.icon}</div>
               </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {loading ? (
+        <p className="py-8 text-center text-muted-foreground">Cargando su postulación...</p>
+      ) : !detail ? (
+        <Card>
+          <CardContent className="space-y-4 py-8">
+            <div className="flex items-start gap-3">
+              <ClipboardList className="mt-0.5 h-6 w-6 text-[#00345E]" />
+              <div>
+                <p className="text-lg font-medium">Aún no ha postulado a este proceso</p>
+                <p className="text-sm text-muted-foreground">
+                  {isOpen
+                    ? `El proceso está abierto hasta el ${formatDate(selectedProcess.endDate)}. Revise sus requisitos y, si los cumple, envíe su solicitud.`
+                    : selectedProcess.status === 'scheduled'
+                      ? `El proceso abrirá el ${formatDate(selectedProcess.startDate)}.`
+                      : 'El proceso está cerrado: ya no se reciben postulaciones.'}
+                </p>
+                {selectedProcess.myTransition && (
+                  <p className="mt-1 text-sm">
+                    Su transición: <span className="font-medium">{selectedProcess.myTransition.fromLabel}</span> →{' '}
+                    <span className="font-medium">{selectedProcess.myTransition.toLabel}</span>
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Button variant="outline" onClick={() => navigate(`/promociones/${selectedProcess.id}`)}>
+                <FileSearch className="mr-2 h-4 w-4" />
+                Ver requisitos y mi elegibilidad
+              </Button>
+              {isOpen && (
+                <Button className="bg-[#00345E] hover:bg-[#002A4B]" onClick={() => navigate(`/promociones/${selectedProcess.id}/postular`)}>
+                  <Send className="mr-2 h-4 w-4" />
+                  Postular
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          {headline && (
+            <Card className={TONE_CLASS[headline.tone]}>
+              <CardContent className="flex flex-wrap items-center justify-between gap-4 py-5">
+                <div className="space-y-2">
+                  <ApplicationStatusBadge status={detail.summary.status} />
+                  <p className="text-base font-medium">{headline.text}</p>
+                  <p className="text-sm opacity-80">
+                    {detail.summary.fromLabel} → {detail.summary.toLabel}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  {detail.canAppeal && (
+                    <Button className="bg-amber-600 hover:bg-amber-700" onClick={() => navigate(`/postulaciones/${detail.summary.id}`)}>
+                      Apelar ahora
+                    </Button>
+                  )}
+                  <Button variant="outline" className="bg-white" onClick={() => navigate(`/postulaciones/${detail.summary.id}`)}>
+                    Ver detalle
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Seguimiento de su solicitud</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ApplicationTimeline steps={buildTimeline(detail)} />
             </CardContent>
           </Card>
-        ))}
-      </div>
-
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Mis Postulaciones</CardTitle>
-            <Button variant="outline" size="sm" onClick={() => navigate('/postulaciones')}>
-              Ver todas
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Proceso</TableHead>
-                <TableHead>Transición</TableHead>
-                <TableHead>Fecha de envío</TableHead>
-                <TableHead>Estado</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {applications.slice(0, 5).map((application) => (
-                <TableRow
-                  key={application.id}
-                  className="cursor-pointer"
-                  onClick={() => navigate(`/postulaciones/${application.id}`)}
-                >
-                  <TableCell className="font-medium">{application.processName}</TableCell>
-                  <TableCell className="text-sm">
-                    {application.fromLabel} → {application.toLabel}
-                  </TableCell>
-                  <TableCell>{formatDateTime(application.submittedAt)}</TableCell>
-                  <TableCell>
-                    <ApplicationStatusBadge status={application.status} />
-                  </TableCell>
-                </TableRow>
-              ))}
-              {applications.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
-                    Aún no ha realizado postulaciones.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Procesos abiertos</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {openProcesses.length === 0 ? (
-            <p className="py-4 text-center text-muted-foreground">No hay procesos abiertos en este momento.</p>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {openProcesses.map((process) => (
-                <Card
-                  key={process.id}
-                  className="cursor-pointer transition-shadow hover:shadow-md"
-                  onClick={() => navigate(`/promociones/${process.id}`)}
-                >
-                  <CardHeader>
-                    <div className="flex items-start justify-between gap-2">
-                      <CardTitle className="text-base">{process.name}</CardTitle>
-                      <ProcessStatusBadge status={process.status} />
-                    </div>
-                  </CardHeader>
-                  <CardContent className="text-sm text-muted-foreground">
-                    Cierra el {formatDate(process.endDate)}
-                    {process.hasApplied && <span className="ml-2 text-green-700">· Ya postuló</span>}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        </>
+      )}
     </div>
   );
 }

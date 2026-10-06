@@ -22,6 +22,12 @@ export const navItems: NavItem[] = [
     roles: ['admin']
   },
   {
+    label: 'Mi postulación',
+    icon: <Home className="w-5 h-5" />,
+    path: '/dashboard',
+    roles: ['docente']
+  },
+  {
     label: 'Promociones',
     icon: <FileText className="w-5 h-5" />,
     path: '/promociones',

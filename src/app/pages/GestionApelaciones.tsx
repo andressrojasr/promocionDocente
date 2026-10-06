@@ -6,6 +6,7 @@ import { Button } from '../components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { ApplicationStatusBadge } from '../components/ApplicationStatusBadge';
 import { useAuth } from '../context/AuthContext';
+import { useSelectedProcess } from '../context/ProcessContext';
 import { fetchApplications } from '../services/applications-service';
 import { formatDateTime } from '../utils/format';
 import type { ApplicationSummary } from '../types/api';
@@ -14,16 +15,17 @@ import ApelacionesCA from './ApelacionesCA';
 /** Apelaciones del docente: sus postulaciones rechazadas por CP y las que ya apeló. */
 function ApelacionesDocente() {
   const navigate = useNavigate();
+  const { selectedProcess } = useSelectedProcess();
   const [applications, setApplications] = useState<ApplicationSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchApplications()
+    fetchApplications(undefined, selectedProcess?.id)
       .then((all) => setApplications(all.filter((a) => a.status === 'appealed' || a.status === 'cp_rejected')))
       .catch((error: unknown) =>
         toast.error(error instanceof Error ? error.message : 'No se pudieron cargar las apelaciones.'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [selectedProcess?.id]);
 
   return (
     <div className="space-y-6">
